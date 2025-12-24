@@ -1,0 +1,3599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracer — API &amp; Logcat Inspector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      color-scheme: light;
+      --bg-primary: #f6f6f6;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #fafafa;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --text-tertiary: #999999;
+      --border-color: #e0e0e0;
+      --border-light: #f0f0f0;
+      --header-bg: #1e293b;
+      --header-text: #f8fafc;
+      --code-bg: #f5f5f5;
+      --code-text: #333333;
+      --logcat-text: #1e2933;
+      --logcat-highlight-bg: rgba(255, 230, 109, 0.55);
+      --logcat-highlight-text: #1a1a1a;
+      --logcat-timestamp: #1f5cb8;
+      --logcat-tag: #0d7a5f;
+      --logcat-level-verbose: #607d8b;
+      --logcat-level-debug: #1e88e5;
+      --logcat-level-info: #2e7d32;
+      --logcat-level-warn: #f9a825;
+      --logcat-level-error: #d32f2f;
+      --logcat-level-fatal: #b71c1c;
+      --crash-bg: #d32f2f;
+      --crash-text: #ffffff;
+    }
+
+
+[data-theme="dark"] {
+      color-scheme: dark;
+      --bg-primary: #0f1012;
+      --bg-secondary: #141518;
+      --bg-tertiary: #181a1f;
+      --text-primary: #e8edf5;
+      --text-secondary: #c4cad6;
+      --text-tertiary: #8d94a3;
+      --border-color: #242730;
+      --border-light: #1c1f28;
+      --header-bg: #0a0c0f;
+      --header-text: #e8edf5;
+      --code-bg: #0f1012;
+      --code-text: #e8edf5;
+      --logcat-text: #d4f5d0;
+      --logcat-highlight-bg: rgba(255, 230, 109, 0.35);
+      --logcat-highlight-text: #0a0a0a;
+      --logcat-timestamp: #7fb7ff;
+      --logcat-tag: #9ff2c4;
+      --logcat-level-verbose: #9aa6b8;
+      --logcat-level-debug: #7fb7ff;
+      --logcat-level-info: #85f5a2;
+      --logcat-level-warn: #f5d97f;
+      --logcat-level-error: #ff8a80;
+      --logcat-level-fatal: #ffb3b3;
+      --crash-bg: #e53935;
+      --crash-text: #ffffff;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg-primary);
+      height: 100vh;
+      overflow: hidden;
+      color: var(--text-primary);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+      flex-direction: column;
+      min-width: 1400px;
+    }
+
+    .header {
+      background: var(--header-bg);
+      color: var(--header-text);
+      padding: 16px 24px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      justify-self: end;
+      -webkit-app-region: no-drag;
+      user-select: auto;
+      padding-right: 16px;
+    }
+
+    .theme-toggle {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: var(--header-text);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .header h1 {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin: 0;
+      justify-self: center;
+      grid-column: 2;
+    }
+
+    .title-text {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.2;
+      gap: 2px;
+    }
+
+    .title-main {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .title-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      letter-spacing: -0.01em;
+    }
+
+    .app-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      object-fit: cover;
+      -webkit-app-region: no-drag;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .device-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.08);
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      -webkit-app-region: no-drag;
+      grid-column: 1;
+      justify-self: start;
+      margin: 0 16px 0 64px;
+    }
+
+    [data-theme="light"] .device-chip {
+      background: rgba(0,0,0,0.04);
+      border-color: rgba(0,0,0,0.08);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 450px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 400px;
+    }
+
+    .sidebar-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 48px;
+    }
+
+    .sidebar-header > span {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .cert-warning {
+      background: #fff3cd;
+      border-bottom: 1px solid #ffc107;
+      color: #856404;
+      padding: 12px 16px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    [data-theme="dark"] .cert-warning {
+      background: #332701;
+      border-bottom: 1px solid #664d03;
+      color: #ffecb5;
+    }
+
+    .cert-warning-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .cert-warning-header button {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0;
+      opacity: 0.7;
+    }
+
+    .cert-warning-header button:hover {
+      opacity: 1;
+    }
+
+    .cert-warning-body {
+      font-size: 11px;
+    }
+
+    .cert-warning-body strong {
+      font-weight: 600;
+    }
+
+    .cert-warning-body ol {
+      margin: 8px 0 8px 20px;
+      padding: 0;
+    }
+
+    .cert-warning-body li {
+      margin: 4px 0;
+    }
+
+    .cert-warning-body code {
+      background: rgba(0, 0, 0, 0.1);
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
+      font-size: 10px;
+    }
+
+    [data-theme="dark"] .cert-warning-body code {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .cert-warning-body a {
+      color: #0066cc;
+      text-decoration: none;
+    }
+
+    .cert-warning-body a:hover {
+      text-decoration: underline;
+    }
+
+    [data-theme="dark"] .cert-warning-body a {
+      color: #66b3ff;
+    }
+
+    .cert-warning-actions {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .cert-warning-actions button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cert-warning-actions button:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+
+    .cert-warning-actions button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .cert-warning-actions .ghost {
+      background: transparent;
+      color: inherit;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    [data-theme="light"] .cert-warning-actions .ghost {
+      border-color: rgba(0,0,0,0.15);
+    }
+
+    .cert-warning-status {
+      font-size: 11px;
+      color: #d1d5db;
+    }
+
+    [data-theme="light"] .cert-warning-status {
+      color: #374151;
+    }
+
+    .sidebar-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .app-filter {
+      appearance: none;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 6px 28px 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                        linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+      background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .app-filter:focus {
+      outline: none;
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+    }
+
+    .app-filter.flash {
+      border-color: #f4b400;
+      box-shadow: 0 0 0 3px rgba(244, 180, 0, 0.35);
+      animation: filterFlash 1.2s ease-out 2;
+    }
+
+    @keyframes filterFlash {
+      0% {
+        box-shadow: 0 0 0 0 rgba(244, 180, 0, 0.45);
+      }
+      100% {
+        box-shadow: 0 0 0 14px rgba(244, 180, 0, 0);
+      }
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .search-input:focus {
+      border-color: #1a73e8;
+    }
+
+    .search-input::placeholder {
+      color: #999;
+    }
+
+    .excluded-container {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      display: none;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+
+    .excluded-container.visible {
+      display: flex;
+    }
+
+    .excluded-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #777;
+      white-space: nowrap;
+    }
+
+    .excluded-chips {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 6px;
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+      min-width: 0;
+    }
+
+    .excluded-chips::-webkit-scrollbar {
+      height: 4px;
+    }
+
+    .excluded-chips::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 2px;
+    }
+
+    .excluded-chips::-webkit-scrollbar-thumb:hover {
+      background: #999;
+    }
+
+    /* Light theme scrollbar (default) */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #c0c0c0 #f0f0f0;
+    }
+
+    *::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: #f0f0f0;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: #c0c0c0;
+      border-radius: 6px;
+      border: 2px solid #f0f0f0;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: #a0a0a0;
+    }
+
+    /* Dark theme scrollbar */
+    [data-theme="dark"] * {
+      scrollbar-color: #3a3d45 #1a1c22;
+    }
+
+    [data-theme="dark"] *::-webkit-scrollbar-track {
+      background: #1a1c22;
+    }
+
+    [data-theme="dark"] *::-webkit-scrollbar-thumb {
+      background: #3a3d45;
+      border: 2px solid #1a1c22;
+    }
+
+    [data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+      background: #4a4d55;
+    }
+
+    .excluded-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #ffe5e5;
+      color: #c62828;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .excluded-remove-btn {
+      border: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .excluded-remove-btn:hover {
+      color: #8e0000;
+    }
+
+    .api-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .api-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-light);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .api-item:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .api-item.selected {
+      background: rgba(26, 115, 232, 0.1);
+      border-left: 3px solid #1a73e8;
+    }
+
+    [data-theme="dark"] .api-item.selected {
+      background: rgba(21, 87, 176, 0.2);
+    }
+
+    .exclude-btn {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      opacity: 0;
+      background: rgba(128, 128, 128, 0.08);
+      border: 1px solid rgba(128, 128, 128, 0.2);
+      color: #757575;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .exclude-btn:hover {
+      background: rgba(128, 128, 128, 0.15);
+      border-color: rgba(128, 128, 128, 0.35);
+      color: #616161;
+    }
+
+    .api-item:hover .exclude-btn {
+      opacity: 1;
+    }
+
+    .api-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .method {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .method.GET { background: #4caf50; color: white; }
+    .method.POST { background: #2196f3; color: white; }
+    .method.PUT { background: #ff9800; color: white; }
+    .method.DELETE { background: #f44336; color: white; }
+    .method.PATCH { background: #9c27b0; color: white; }
+
+    .status-code {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 3px;
+    }
+
+    .status-code.success { background: #e8f5e9; color: #2e7d32; }
+    .status-code.error { background: #ffebee; color: #c62828; }
+    .status-code.pending { background: #fff3e0; color: #ef6c00; }
+
+    .api-url {
+      font-size: 13px;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .api-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 4px;
+    }
+
+    .detail-panel {
+      flex: 1;
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .detail-url {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    .detail-meta {
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .close-detail-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+      border-radius: 4px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .close-detail-btn:hover {
+      background: var(--bg-tertiary);
+      color: #d32f2f;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+    }
+
+    .tab {
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: var(--bg-primary);
+    }
+
+    .tab.active {
+      color: #1a73e8;
+      border-bottom-color: #1a73e8;
+      background: var(--bg-secondary);
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    .section-header .section-title {
+      margin-bottom: 0;
+    }
+
+    .format-btn {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .format-btn:hover {
+      background: #388e3c;
+      transform: translateY(-1px);
+    }
+
+    .format-btn:active {
+      background: #2e7d32;
+      transform: translateY(1px);
+    }
+
+    .html-toggle-btn {
+      background: #2196f3;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+      margin-left: 8px;
+    }
+
+    .html-toggle-btn:hover {
+      background: #1976d2;
+      transform: translateY(-1px);
+    }
+
+    .html-toggle-btn:active {
+      background: #1565c0;
+      transform: translateY(1px);
+    }
+
+    .html-preview-container {
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: white;
+      min-height: 200px;
+      overflow: auto;
+    }
+
+    .html-preview-container iframe {
+      width: 100%;
+      min-height: 400px;
+      border: none;
+    }
+
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-left: 8px;
+    }
+
+    .copy-btn:hover {
+      background: var(--bg-secondary);
+      border-color: #1a73e8;
+      color: #1a73e8;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .copy-btn.copied {
+      color: #4caf50;
+      border-color: #4caf50;
+    }
+
+    .logcat-view {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--bg-secondary);
+    }
+
+    .logcat-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+    }
+
+    .logcat-desc {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 220px;
+    }
+
+    .logcat-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .logcat-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .logcat-controls {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .logcat-filter {
+      border: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 10px 12px;
+      border-radius: 6px;
+      min-width: 200px;
+      width: 100%;
+      flex: 1 1 auto;
+      font-size: 13px;
+      outline: none;
+      margin-right: 12px;
+    }
+
+    .logcat-filter::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .logcat-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-right: 12px;
+    }
+
+    .logcat-status {
+      padding: 8px 20px;
+      font-size: 12px;
+      color: #f97316;
+      background: rgba(249, 115, 22, 0.08);
+      border-bottom: 1px solid rgba(249, 115, 22, 0.2);
+      display: none;
+    }
+
+    [data-theme="dark"] .logcat-status {
+      color: #facc15;
+      background: rgba(250, 204, 21, 0.08);
+      border-bottom: 1px solid rgba(250, 204, 21, 0.15);
+    }
+
+    .logcat-status {
+      padding: 8px 20px;
+      font-size: 12px;
+      color: #f97316;
+      background: rgba(249, 115, 22, 0.08);
+      border-bottom: 1px solid rgba(249, 115, 22, 0.2);
+    }
+
+    [data-theme="dark"] .logcat-status {
+      color: #facc15;
+      background: rgba(250, 204, 21, 0.08);
+      border-bottom: 1px solid rgba(250, 204, 21, 0.15);
+    }
+
+    .logcat-level {
+      appearance: none;
+      border: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 10px 28px 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                        linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+      background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      width: 120px;
+      flex-shrink: 0;
+      margin-right: 12px;
+    }
+
+    .logcat-level:focus {
+      outline: none;
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+    }
+
+    .pid-select {
+      width: 180px;
+      flex-shrink: 0;
+      appearance: none;
+      border: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 10px 28px 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                        linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+      background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      margin-right: 12px;
+    }
+
+    .pid-manual {
+      border: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      width: 150px;
+    }
+
+    .pid-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .logcat-body {
+      flex: 1;
+      padding: 12px 16px;
+      overflow-y: auto;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.02)) var(--bg-secondary);
+    }
+
+    .logcat-line {
+      color: var(--logcat-text);
+      padding: 4px 12px;
+      white-space: nowrap;
+      border-left: 3px solid transparent;
+    }
+
+    .logcat-body.wrap-lines .logcat-line {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .logcat-line.level-verbose { color: var(--logcat-level-verbose); border-left-color: var(--logcat-level-verbose); }
+    .logcat-line.level-debug { color: var(--logcat-level-debug); border-left-color: var(--logcat-level-debug); }
+    .logcat-line.level-info { color: var(--logcat-level-info); border-left-color: var(--logcat-level-info); }
+    .logcat-line.level-warn { color: var(--logcat-level-warn); border-left-color: var(--logcat-level-warn); background: rgba(245, 217, 127, 0.08); }
+    .logcat-line.level-error { color: var(--logcat-level-error); border-left-color: var(--logcat-level-error); background: rgba(255, 138, 128, 0.12); }
+    .logcat-line.level-fatal { color: var(--logcat-level-fatal); border-left-color: var(--logcat-level-fatal); background: rgba(255, 179, 179, 0.16); font-weight: 600; }
+
+    .logcat-line:hover {
+      background: var(--bg-tertiary);
+      border-left-color: #1a73e8;
+    }
+
+    .logcat-highlight {
+      background: var(--logcat-highlight-bg);
+      color: var(--logcat-highlight-text);
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
+    .logcat-timestamp {
+      color: var(--logcat-timestamp);
+    }
+
+    .logcat-tag {
+      color: var(--logcat-tag);
+      font-weight: 600;
+    }
+
+    .logcat-message-group {
+      display: inline;
+    }
+
+    .logcat-message-continuation {
+      display: block;
+      padding-left: 19ch; /* Align with timestamp + 1 space: "12-19 05:53:29.893 " */
+    }
+
+    .logcat-empty {
+      color: var(--text-tertiary);
+      font-style: italic;
+    }
+
+    .crash-toast {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 9999;
+      background: var(--crash-bg);
+      color: var(--crash-text);
+      padding: 12px 14px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      font-size: 13px;
+      font-weight: 600;
+      max-width: 360px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      display: none;
+    }
+
+    .crash-toast.show {
+      display: block;
+      animation: fadeInScale 0.2s ease-out;
+    }
+
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .format-error {
+      margin-top: 8px;
+      color: #d32f2f;
+      font-size: 12px;
+    }
+
+    .headers-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .headers-table tr {
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .headers-table td {
+      padding: 8px 0;
+      font-size: 13px;
+    }
+
+    .headers-table td:first-child {
+      color: var(--text-secondary);
+      font-weight: 500;
+      width: 200px;
+      vertical-align: top;
+    }
+
+    .headers-table td:last-child {
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+
+    .json-viewer {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 16px;
+      border-radius: 6px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+      border: 1px solid var(--border-color);
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-tertiary);
+      font-size: 14px;
+    }
+
+    .no-data {
+      color: var(--text-tertiary);
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    .curl-section {
+      padding: 16px 20px;
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border-color);
+    }
+
+    .curl-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .no-data {
+      color: var(--text-tertiary);
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    .curl-options {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 12px;
+    }
+
+    .curl-checkbox input {
+      cursor: pointer;
+    }
+
+    .copy-curl-btn {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+    }
+
+    .copy-curl-btn:hover {
+      background: #1557b0;
+    }
+
+    .copy-curl-btn:active {
+      background: #0d47a1;
+    }
+
+    .copy-curl-btn.copied {
+      background: #4caf50;
+    }
+
+    .clear-btn {
+      background: #9e9e9e;
+      color: white;
+      border: none;
+      padding: 0;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-right: 12px;
+    }
+
+    .clear-btn:hover {
+      background: #757575;
+      transform: scale(1.05);
+    }
+
+    .clear-btn:active {
+      background: #616161;
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body>
+  <div id="crashToast" class="crash-toast"></div>
+  <div class="container">
+    <div class="header">
+      <div id="deviceInfo" class="device-chip" style="display:none;">
+        <span>📱</span>
+        <span id="deviceNameText">Detecting device…</span>
+      </div>
+      <h1>
+        <div class="title-row">
+          <img class="app-icon" src="/icon.png" alt="Tracer icon">
+          <div class="title-main">Tracer</div>
+        </div>
+        <div class="title-sub">API &amp; Logcat Inspector</div>
+      </h1>
+      <div class="header-controls">
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="Toggle theme">
+          <span id="themeIcon">🌙</span>
+          <span id="themeText">Dark</span>
+        </button>
+        <div class="status">
+          <div class="status-dot"></div>
+          <span>Live • <span id="count">0</span> requests</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <span>Network Requests</span>
+          <div class="sidebar-controls">
+            <select id="appFilter" class="app-filter" title="Filter by app">
+              <option value="all">All User Agents</option>
+            </select>
+            <button class="clear-btn" onclick="clearLogs()" title="Clear all logs">🗑️</button>
+          </div>
+        </div>
+        <div id="certWarning" class="cert-warning" style="display: none;">
+          <div class="cert-warning-header">
+            <span>⚠️ Certificate Not Installed</span>
+            <button onclick="dismissCertWarning()" title="Dismiss">✕</button>
+          </div>
+          <div class="cert-warning-body">
+            Install the HTTPS proxy certificate on your Android device.
+            <div class="cert-warning-actions">
+              <button id="pushCertButton" onclick="pushCertToDevice()">Push certificate via adb</button>
+              <button class="ghost" onclick="markCertInstalled()">I installed it</button>
+              <span id="pushCertStatus" class="cert-warning-status"></span>
+            </div>
+            <a href="javascript:void(0)" onclick="showCertDetails()">View detailed instructions →</a>
+          </div>
+        </div>
+        <div class="search-box">
+          <input type="text" id="searchInput" class="search-input" placeholder="🔍 Search by URL, method, or status..." oninput="handleSearch()">
+        </div>
+        <div class="api-list" id="apiList">
+          <div class="empty-state">
+            <div class="empty-state-icon">🔍</div>
+            <div>Waiting for API calls...</div>
+          </div>
+        </div>
+        <div class="excluded-container" id="excludedContainer"></div>
+      </div>
+
+      <div class="detail-panel" id="detailPanel">
+        <div class="logcat-view">
+          <div id="logcatStatus" class="logcat-status" style="display:none;"></div>
+          <div class="logcat-header">
+            <div class="logcat-desc">
+              <div class="logcat-title">Live Logcat</div>
+              <div class="logcat-subtitle">Showing the latest device logs</div>
+            </div>
+            <div class="logcat-controls">
+              <input
+                id="logcatFilterInput"
+                class="logcat-filter"
+                type="text"
+                placeholder="Search"
+                value=""
+                oninput="handleLogcatFilter(event)"
+              />
+              <select id="logcatLevel" class="logcat-level" onchange="handleLogcatLevel(event)" title="Filter by level">
+                <option value="all">All</option>
+                <option value="verbose">Verbose</option>
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="error">Error</option>
+                <option value="fatal">Fatal</option>
+              </select>
+              <select id="pidFilterSelect" class="pid-select" onchange="handlePidSelectChange()" title="Filter by PID (All = no filter)"></select>
+              <button class="clear-btn" onclick="refreshPidList()" title="Refresh PID list">↻</button>
+              <label class="curl-checkbox logcat-toggle">
+                <input type="checkbox" id="logcatAutoscroll" checked onchange="handleLogcatAutoscroll(event)">
+                <span>Auto-scroll</span>
+              </label>
+              <label class="curl-checkbox logcat-toggle">
+                <input type="checkbox" id="logcatWrapLines" onchange="handleLogcatWrapLines(event)">
+                <span>Wrap lines</span>
+              </label>
+              <button class="clear-btn" onclick="clearLogcat()" title="Clear logcat view">🗑️</button>
+            </div>
+          </div>
+          <div class="logcat-body" id="logcatContent">
+            <div class="logcat-empty">Waiting for logcat...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function renderLogcatPanel() {
+      return `
+        <div class="logcat-view">
+          <div class="logcat-header">
+            <div class="logcat-desc">
+              <div class="logcat-title">Live Logcat</div>
+              <div class="logcat-subtitle">Showing the latest device logs</div>
+            </div>
+            <div class="logcat-controls">
+              <input
+                id="logcatFilterInput"
+                class="logcat-filter"
+                type="text"
+                placeholder="Search"
+                value="${escapeHtml(logcatFilter.text)}"
+                oninput="handleLogcatFilter(event)"
+              />
+              <select id="logcatLevel" class="logcat-level" onchange="handleLogcatLevel(event)" title="Filter by level">
+                <option value="all"${logcatFilter.level === 'all' ? ' selected' : ''}>All</option>
+                <option value="verbose"${logcatFilter.level === 'verbose' ? ' selected' : ''}>Verbose</option>
+                <option value="debug"${logcatFilter.level === 'debug' ? ' selected' : ''}>Debug</option>
+                <option value="info"${logcatFilter.level === 'info' ? ' selected' : ''}>Info</option>
+                <option value="warn"${logcatFilter.level === 'warn' ? ' selected' : ''}>Warn</option>
+                <option value="error"${logcatFilter.level === 'error' ? ' selected' : ''}>Error</option>
+                <option value="fatal"${logcatFilter.level === 'fatal' ? ' selected' : ''}>Fatal</option>
+              </select>
+              <select id="pidFilterSelect" class="pid-select" onchange="handlePidSelectChange()" title="Filter by PID (All = no filter)"></select>
+              <button class="clear-btn" onclick="refreshPidList()" title="Refresh PID list">↻</button>
+              <label class="curl-checkbox logcat-toggle">
+                <input type="checkbox" id="logcatAutoscroll" checked onchange="handleLogcatAutoscroll(event)">
+                <span>Auto-scroll</span>
+              </label>
+              <label class="curl-checkbox logcat-toggle">
+                <input type="checkbox" id="logcatWrapLines" onchange="handleLogcatWrapLines(event)">
+                <span>Wrap lines</span>
+              </label>
+              <button class="clear-btn" onclick="clearLogcat()" title="Clear logcat view">🗑️</button>
+            </div>
+          </div>
+          <div class="logcat-body" id="logcatContent">
+            <div class="logcat-empty">Waiting for logcat...</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Theme management
+    function getSystemTheme() {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function getTheme() {
+      const stored = localStorage.getItem('theme');
+      if (stored === 'dark' || stored === 'light') return stored;
+      if (stored === 'system' || !stored) return getSystemTheme();
+      return getSystemTheme();
+    }
+
+    function setTheme(theme) {
+      if (theme === 'system') {
+        theme = getSystemTheme();
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+      updateThemeButton(theme);
+    }
+
+    function updateThemeButton(theme) {
+      const icon = document.getElementById('themeIcon');
+      const text = document.getElementById('themeText');
+      if (theme === 'dark') {
+        icon.textContent = '☀️';
+        text.textContent = 'Light';
+      } else {
+        icon.textContent = '🌙';
+        text.textContent = 'Dark';
+      }
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', newTheme);
+      setTheme(newTheme);
+    }
+
+    // Initialize theme on load
+    setTheme(getTheme());
+
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      const storedTheme = localStorage.getItem('theme');
+      if (storedTheme === 'system' || !storedTheme) {
+        setTheme(e.matches ? 'dark' : 'light');
+      }
+    });
+
+    const eventSource = new EventSource('/events');
+    let LOGCAT_MAX_LINES = 100000; // Default value, will be fetched from server
+    let SOURCE_TYPE = 'api'; // Default value, will be fetched from server ('api', 'mitm', or 'flipper')
+    const LOGCAT_RENDER_LIMIT = 1200;
+    const LOGCAT_RENDER_DEBOUNCE_MS = 120;
+    let logcatRenderVersion = 0;
+    let lastRenderedVersion = -1;
+    let lastRenderedCount = 0;
+    let apiCalls = [];
+    let selectedCall = null;
+    let searchQuery = '';
+    let excludedPatterns = [];
+    let currentTab = 'request';
+    let logcatLines = [];
+    let logcatFilter = { text: '', level: 'all' };
+    let logcatAutoscroll = true;
+    let logcatWrapLines = false;
+    let logcatRenderTimer = null;
+    let logcatShouldStick = false;
+    let lastCrashSignature = null;
+    let crashToastTimer = null;
+    let crashDetectionEnabled = true;
+    let pidOptions = [];
+    let pidFilterSelection = [];
+    let logcatPanelMounted = false;
+    let pidManualValue = '';
+    let pidPackagesOnly = true;
+    const PID_BLACKLIST_PREFIXES = [
+      // Android System
+      'android.',
+      'com.android.',
+      'android.hardware.',
+      'media.',
+
+      // Google services
+      'com.google.',
+      'vendor.google.',
+      'google.hardware.',
+
+      // Samsung services
+      'com.samsung.',
+      'samsung.hardware.',
+      'com.sec.',
+
+      // Vendor/OEM services
+      'vendor.',
+
+      // Shannon (Samsung modem)
+      '.Shannon',
+      'com.shannon.',
+
+      // Microsoft
+      'com.microsoft.',
+
+      // Adobe
+      'com.adobe.',
+
+      // System packages
+      'org.chromium.',
+      'org.codeaurora.',
+
+      // Qualcomm
+      'com.qualcomm.',
+      'com.qti.',
+
+      // Other common system services
+      'com.miui.',
+      'com.huawei.',
+      'com.xiaomi.',
+      'com.oppo.',
+      'com.vivo.',
+      'com.oneplus.',
+
+      // Generic system
+      'system_server',
+      'surfaceflinger',
+      'logd',
+      'vold',
+      'netd',
+      'installd'
+    ];
+    const bodyViewState = {
+      request: { formatted: false, formattedHtml: null, error: null, htmlPreview: false },
+      response: { formatted: false, formattedHtml: null, error: null, htmlPreview: false }
+    };
+    // Randomization state - default all to checked
+    let randomizationEnabled = {
+      location: true,
+      ids: true,
+      tokens: true
+    };
+
+    // Certificate warning state
+    let lastApiCallTime = null;
+    let certWarningCheckInterval = null;
+    let certWarningDismissed = false;
+    const CERT_ACK_KEY = 'tracer_cert_ack';
+    let devicePollInterval = null;
+
+    function isCertAcknowledged() {
+      return localStorage.getItem(CERT_ACK_KEY) === 'true';
+    }
+
+    function setCertAcknowledged() {
+      localStorage.setItem(CERT_ACK_KEY, 'true');
+      certWarningDismissed = true;
+      const certWarningEl = document.getElementById('certWarning');
+      if (certWarningEl) {
+        certWarningEl.style.display = 'none';
+      }
+    }
+
+    function checkCertWarning() {
+      const certWarningEl = document.getElementById('certWarning');
+      if (!certWarningEl || certWarningDismissed || isCertAcknowledged()) return;
+
+      // Only show certificate warning for mitm source (not for flipper or api)
+      if (SOURCE_TYPE !== 'mitm') {
+        certWarningEl.style.display = 'none';
+        return;
+      }
+
+      const now = Date.now();
+      const CERT_WARNING_DELAY = 30000; // 30 seconds
+
+      // Show warning if no API calls received in last 30 seconds (and at least 30 seconds have passed since page load)
+      if (lastApiCallTime === null && now > CERT_WARNING_DELAY) {
+        certWarningEl.style.display = 'block';
+      } else if (lastApiCallTime !== null && (now - lastApiCallTime) > CERT_WARNING_DELAY) {
+        certWarningEl.style.display = 'block';
+      } else {
+        certWarningEl.style.display = 'none';
+      }
+    }
+
+    function dismissCertWarning() {
+      certWarningDismissed = true;
+      const certWarningEl = document.getElementById('certWarning');
+      if (certWarningEl) {
+        certWarningEl.style.display = 'none';
+      }
+    }
+
+    async function pushCertToDevice() {
+      const button = document.getElementById('pushCertButton');
+      const status = document.getElementById('pushCertStatus');
+
+      if (status) status.textContent = '';
+      if (button) button.disabled = true;
+
+      try {
+        const res = await fetch('/cert/push', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.ok) {
+          throw new Error((data && data.error) || 'Failed to push certificate');
+        }
+
+        if (status) {
+          const mitm = data.results && data.results.mitm;
+          const zscaler = data.results && data.results.zscaler;
+          let message = `Mitmproxy: `;
+          if (mitm?.pushed) message += 'pushed';
+          else if (mitm?.alreadyPresent) message += 'already present';
+          else message += 'unknown';
+
+          if (zscaler) {
+            message += ` • Zscaler: `;
+            if (zscaler.error) message += `error (${zscaler.error})`;
+            else if (zscaler.pushed) message += 'pushed';
+            else if (zscaler.alreadyPresent) message += 'already present';
+            else message += 'not found';
+          } else {
+            message += ' • Zscaler: not bundled';
+          }
+
+          const deviceLabel = data.deviceName || data.deviceId || 'device';
+          status.textContent = `${message} → ${deviceLabel}`;
+        }
+        setCertAcknowledged();
+      } catch (err) {
+        console.error('Push certificate error', err);
+        if (status) status.textContent = err.message || 'Failed to push certificate';
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    function markCertInstalled() {
+      setCertAcknowledged();
+      const status = document.getElementById('pushCertStatus');
+      if (status) {
+        status.textContent = 'Marked as installed';
+      }
+    }
+
+    function showCertDetails() {
+      alert(`Installing mitmproxy Certificate
+
+1. Locate the certificate file:
+   - Right-click "Tracer.app" in Applications
+   - Select "Show Package Contents"
+   - Navigate to Contents/Resources/
+   - Find "mitmproxy-ca-cert.cer"
+
+2. Transfer to device:
+   Option A: Using adb (recommended)
+   cd /Applications/Tracer.app/Contents/Resources/
+   adb push mitmproxy-ca-cert.cer /sdcard/Download/
+
+   Option B: Manual transfer
+   - Copy the file to your computer
+   - Email it to yourself or use USB file transfer
+
+3. Install on Android:
+   - Open Settings → Security
+   - Tap "Install from storage" or "Install certificates"
+   - Browse to Downloads folder
+   - Select "mitmproxy-ca-cert.cer"
+   - Give it a name (e.g., "Mitmproxy CA")
+   - Tap OK
+
+4. Verify:
+   - Settings → Security → Trusted credentials → User
+   - You should see "mitmproxy" in the list
+
+Note: This certificate allows the app to decrypt HTTPS traffic for debugging purposes.`);
+    }
+
+    // Start checking for cert warning after 30 seconds
+    certWarningCheckInterval = setInterval(checkCertWarning, 5000);
+
+    const userAgentState = {
+      known: new Set(),
+      ordered: [],
+      selected: 'all',
+      flashTimeout: null
+    };
+
+    setupAppFilter();
+
+    function resetBodyViewState() {
+      bodyViewState.request = { formatted: false, formattedHtml: null, error: null };
+      bodyViewState.response = { formatted: false, formattedHtml: null, error: null };
+    }
+
+    eventSource.addEventListener('init', (event) => {
+      const payload = JSON.parse(event.data || '{}');
+      const { apiCalls: calls = [], excludedPatterns: patterns = [], logcat = [] } = payload;
+      apiCalls = calls;
+      excludedPatterns = patterns;
+      logcatLines = Array.isArray(logcat) ? logcat.slice(-LOGCAT_MAX_LINES) : [];
+      resetBodyViewState();
+      currentTab = 'request';
+      syncUserAgentsFromCalls(apiCalls);
+      renderApiList();
+      renderExcludedPatterns();
+      updateCount();
+      renderDetail();
+      if (!logcatPanelMounted) {
+        logcatPanelMounted = true;
+        renderDetail();
+      }
+      refreshPidList();
+
+      // Stop polling since SSE is working
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+        console.log('SSE connected, stopping polling');
+      }
+
+      if (devicePollInterval) clearInterval(devicePollInterval);
+      fetchDeviceInfo();
+      fetchAdbStatus();
+      devicePollInterval = setInterval(() => {
+        fetchDeviceInfo();
+        fetchAdbStatus();
+      }, 10000);
+    });
+
+    document.addEventListener('keydown', handleGlobalKeydown);
+
+    eventSource.addEventListener('newLog', (event) => {
+      try {
+        const call = JSON.parse(event.data);
+        apiCalls.unshift(call);
+        if (apiCalls.length > 100) apiCalls.pop();
+
+        // Track that we received an API call
+        lastApiCallTime = Date.now();
+        setCertAcknowledged();
+        checkCertWarning(); // Immediately hide warning when API calls come in
+
+        syncUserAgentsFromCalls(apiCalls);
+        // Only update the list, don't touch the detail panel
+        renderApiList();
+        updateCount();
+      } catch (err) {
+        console.warn('Failed to parse newLog event', err);
+      }
+    });
+
+    eventSource.addEventListener('logcatUpdate', (event) => {
+      try {
+        const data = JSON.parse(event.data || '{}');
+        const lines = data.lines || [];
+        appendLogcatLines(Array.isArray(lines) ? lines : []);
+      } catch (err) {
+        console.warn('Failed to parse logcatUpdate event', err);
+      }
+    });
+
+    eventSource.addEventListener('logcatCleared', () => {
+      logcatLines = [];
+      lastRenderedCount = 0;
+      logcatRenderVersion++;
+      renderDetail();
+      // Re-populate PID dropdown after re-rendering the panel
+      setTimeout(() => renderPidSelect(), 0);
+
+      // Disable crash detection temporarily to avoid false positives from buffer dumps
+      crashDetectionEnabled = false;
+      setTimeout(() => {
+        crashDetectionEnabled = true;
+      }, 2000); // Re-enable after 2 seconds
+    });
+
+    eventSource.addEventListener('excludedPatternsUpdated', (event) => {
+      try {
+        const patterns = JSON.parse(event.data || '[]');
+        excludedPatterns = patterns;
+        renderExcludedPatterns();
+
+        if (selectedCall && isCallExcluded(selectedCall)) {
+          selectedCall = null;
+          resetBodyViewState();
+          currentTab = 'request';
+          renderDetail();
+        }
+        // renderApiList will preserve scroll position internally
+        renderApiList();
+        updateCount();
+      } catch (err) {
+        console.warn('Failed to parse excludedPatternsUpdated event', err);
+      }
+    });
+
+    eventSource.addEventListener('logsCleared', () => {
+      console.log('Received logsCleared event from server');
+      apiCalls = [];
+      selectedCall = null;
+      resetBodyViewState();
+      currentTab = 'request';
+      resetUserAgents();
+      renderApiList();
+      updateCount();
+      renderDetail();
+      renderExcludedPatterns();
+      console.log('UI cleared successfully');
+    });
+
+    eventSource.onerror = () => {
+      console.warn('SSE connection error, polling for updates instead');
+      refreshLogs();
+    };
+
+    const POLL_INTERVAL_MS = 1500;
+    let refreshTimer = null;
+
+    async function refreshLogs() {
+      try {
+        const response = await fetch('/logs');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const { apiCalls: calls = [], excludedPatterns: patterns = [] } = payload;
+        apiCalls = calls;
+        excludedPatterns = patterns;
+        if (selectedCall) {
+          selectedCall = apiCalls.find(c => c.id === selectedCall?.id) || null;
+        }
+
+        // Refresh logcat during polling fallback
+        try {
+          const logcatResp = await fetch('/logcat');
+          if (logcatResp.ok) {
+            const logcatPayload = await logcatResp.json();
+            if (Array.isArray(logcatPayload.lines)) {
+              const newLines = logcatPayload.lines.slice(-LOGCAT_MAX_LINES);
+              // Only update if content actually changed
+              if (newLines.length !== logcatLines.length || newLines[newLines.length - 1] !== logcatLines[logcatLines.length - 1]) {
+                logcatLines = newLines;
+                if (!selectedCall) {
+                  // Don't force stick - let it preserve scroll position naturally
+                  updateLogcatDom(false);
+                }
+              }
+            }
+          }
+        } catch (logcatErr) {
+          console.warn('Failed to refresh logcat via polling', logcatErr);
+        }
+
+        syncUserAgentsFromCalls(apiCalls);
+        renderExcludedPatterns();
+        // renderApiList will preserve scroll position internally
+        renderApiList();
+        updateCount();
+        renderDetail();
+      } catch (err) {
+        console.warn('Failed to refresh logs via polling', err);
+      }
+    }
+
+    function startPolling() {
+      if (refreshTimer) return;
+      refreshLogs();
+      refreshTimer = setInterval(refreshLogs, POLL_INTERVAL_MS);
+    }
+
+    async function refreshPidList() {
+      try {
+        const res = await fetch('/logcat/pids');
+        if (!res.ok) return;
+        const payload = await res.json();
+        pidOptions = Array.isArray(payload.pids) ? payload.pids : [];
+        pidFilterSelection = Array.isArray(payload.filter) ? payload.filter : pidFilterSelection;
+        renderPidSelect();
+      } catch (err) {
+        console.warn('Failed to refresh PID list', err);
+      }
+    }
+
+    function renderPidSelect() {
+      const select = document.getElementById('pidFilterSelect');
+      if (!select) return;
+      const options = ['<option value="__all__">(All PIDs)</option>'].concat(
+        pidOptions
+          .filter(({ name, debuggable }) => {
+            if (!name) return false;
+
+            // Only show third-party apps (user-installed apps, not system apps)
+            if (!debuggable) return false;
+
+            // Apply package filter
+            if (pidPackagesOnly && !name.includes('.')) return false;
+
+            // Apply blacklist filter (for extra safety)
+            if (PID_BLACKLIST_PREFIXES.some(prefix => name.startsWith(prefix))) return false;
+
+            return true;
+          })
+          .map(({ pid, name }) => {
+            const label = name ? escapeHtml(name) : pid;
+            const selected = pidFilterSelection.includes(pid) ? ' selected' : '';
+            return `<option value="${pid}"${selected}>${label}</option>`;
+          })
+      );
+      select.innerHTML = options.join('');
+      const desired = pidFilterSelection[0] || '__all__';
+      select.value = desired;
+    }
+
+    async function handlePidSelectChange() {
+      const select = document.getElementById('pidFilterSelect');
+      if (!select) return;
+      const value = select.value;
+      const values = value && value !== '__all__' ? [value] : [];
+      await applyPidFilter(values);
+    }
+
+    function handlePidPackagesOnly(event) {
+      pidPackagesOnly = !!event.target.checked;
+      renderPidSelect();
+    }
+
+    async function applyPidFilter(pids) {
+      try {
+        const res = await fetch('/logcat/filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pids, level: logcatFilter.level })
+        });
+        if (res.ok) {
+          pidFilterSelection = pids;
+          // No need to refresh buffer - server will clear and restart adb
+        }
+      } catch (err) {
+        console.warn('Failed to apply PID filter', err);
+      }
+    }
+
+    function handlePidManualInput(event) {
+      pidManualValue = event.target.value || '';
+    }
+
+    async function applyPidManual() {
+      const trimmed = (pidManualValue || '').trim();
+      if (!trimmed) {
+        await applyPidFilter([]);
+        return;
+      }
+      const first = trimmed.split(/[,\s]+/).filter(Boolean)[0];
+      if (first) {
+        await applyPidFilter([first]);
+      }
+    }
+
+    // Fetch config from server on startup
+    async function fetchConfig() {
+      try {
+        const res = await fetch('/config');
+        if (res.ok) {
+          const config = await res.json();
+          if (config.LOGCAT_MAX_LINES) {
+            LOGCAT_MAX_LINES = config.LOGCAT_MAX_LINES;
+          }
+          if (config.source) {
+            SOURCE_TYPE = config.source;
+            console.log('Source type:', SOURCE_TYPE);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch config, using default values', err);
+      }
+    }
+
+    // Add global event delegation for close button
+    document.addEventListener('click', function(e) {
+      const target = e.target.closest('.close-detail-btn');
+      if (target) {
+        e.preventDefault();
+        e.stopPropagation();
+        selectedCall = null;
+        resetBodyViewState();
+        currentTab = 'request';
+        renderApiList();
+        renderDetail();
+      }
+    });
+
+    fetchConfig();
+    startPolling();
+
+    // Periodically refresh PID list to keep it up-to-date
+    setInterval(() => {
+      refreshPidList();
+    }, 5000);
+
+    function detectLogLevel(line) {
+      const match = line.match(/\b([VDIWEF])\/[^:]+:/);
+      const letter = match ? match[1] : null;
+      switch (letter) {
+        case 'V': return 'verbose';
+        case 'D': return 'debug';
+        case 'I': return 'info';
+        case 'W': return 'warn';
+        case 'E': return 'error';
+        case 'F': return 'fatal';
+        default: return 'info';
+      }
+    }
+
+    function extractPid(line) {
+      // Format 1: "[YYYY-]MM-DD HH:MM:SS.mmm PRIORITY/TAG(PID):" or "PRIORITY/TAG (PID):"
+      // No space before parenthesis: I/ApiLogger(7450):
+      let m = line.match(/^(?:\d{4}-)?\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+[VDIWEF]\/[^\s(]+\(\s*(\d+)\)/);
+      if (m && m[1]) return m[1];
+
+      // Format 2: "[YYYY-]MM-DD HH:MM:SS.mmm PID TID PRIORITY ..." (threadtime format)
+      m = line.match(/^(?:\d{4}-)?\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+\d+\s+[VDIWEF]\b/);
+      if (m && m[1]) return m[1];
+
+      // Fallback: look for PID in parentheses anywhere after timestamp
+      m = line.match(/^(?:\d{4}-)?\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+.*?\(\s*(\d+)\)/);
+      if (m && m[1]) return m[1];
+
+      return null;
+    }
+
+    function matchesLogcatFilters(line, level) {
+      // PID and log level filtering now happen at adb level via --pid and *:LEVEL flags
+      // Only text search remains in frontend
+
+      if (!logcatFilter.text) return true;
+
+      // Split search terms by space and check if ALL terms are present (AND search)
+      const searchTerms = logcatFilter.text.trim().split(/\s+/).filter(t => t.length > 0);
+      const lineLower = line.toLowerCase();
+      return searchTerms.every(term => lineLower.includes(term.toLowerCase()));
+    }
+
+    function extractLogTag(line) {
+      // Extract tag from format: "MM-DD HH:MM:SS.mmm LEVEL/TAG(PID):"
+      const match = line.match(/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+([VDIWEF]\/[^:]+)/);
+      return match ? match[1] : null;
+    }
+
+    function isStackTraceLine(line) {
+      // Detect if line looks like a stack trace
+      return /^\s*at\s+/.test(line) ||
+             /Exception:|Error:/.test(line) ||
+             /^\s*Caused by:/.test(line);
+    }
+
+    function shouldGroupLines(level, lines) {
+      // Only group error/fatal logs, or if any line looks like a stack trace
+      if (level === 'error' || level === 'fatal') return true;
+      return lines.some(item => {
+        const content = item.line.replace(/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+[VDIWEF]\/[^:]+:\s*/, '');
+        return isStackTraceLine(content);
+      });
+    }
+
+    function groupConsecutiveLines(lines) {
+      if (lines.length === 0) return [];
+
+      const grouped = [];
+      let currentGroup = null;
+
+      for (const item of lines) {
+        const tag = extractLogTag(item.line);
+
+        if (currentGroup && currentGroup.tag === tag && currentGroup.level === item.level) {
+          // Same tag and level - add to current group
+          currentGroup.lines.push(item.line);
+        } else {
+          // Different tag/level - start new group
+          if (currentGroup) {
+            grouped.push(currentGroup);
+          }
+          currentGroup = {
+            tag,
+            level: item.level,
+            lines: [item.line],
+            shouldGroup: false // Will be determined when finalizing
+          };
+        }
+      }
+
+      // Push last group
+      if (currentGroup) {
+        grouped.push(currentGroup);
+      }
+
+      // Mark groups that should be grouped (errors or stack traces)
+      grouped.forEach(group => {
+        group.shouldGroup = group.lines.length > 1 && shouldGroupLines(group.level, group.lines.map(line => ({ line })));
+      });
+
+      return grouped;
+    }
+
+    function getFilteredLogcat() {
+      const windowed = logcatLines.length > LOGCAT_RENDER_LIMIT
+        ? logcatLines.slice(-LOGCAT_RENDER_LIMIT)
+        : logcatLines;
+      const filtered = [];
+      for (const line of windowed) {
+        const level = detectLogLevel(line);
+        if (!matchesLogcatFilters(line, level)) continue;
+        filtered.push({ line, level });
+      }
+      // Reverse to show newest logs at top
+      return filtered.reverse();
+    }
+
+    function renderLogcatContentLines(lines) {
+      if (logcatLines.length === 0) {
+        return '<div class="logcat-empty">Waiting for logcat...</div>';
+      }
+      if (lines.length === 0) {
+        return '<div class="logcat-empty">No logcat lines match the current filter.</div>';
+      }
+
+      // Group consecutive lines with same tag
+      const grouped = groupConsecutiveLines(lines);
+
+      return grouped
+        .map(group => {
+          const { level, lines: groupLines, shouldGroup } = group;
+
+          // If single line OR shouldn't group - render normally
+          if (groupLines.length === 1 || !shouldGroup) {
+            // Render each line separately
+            return groupLines.map(line => {
+              let display = escapeHtml(line);
+              display = display.replace(
+                /^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+([VDIWEF]\/[^:]+:)/,
+                '<span class="logcat-timestamp">$1</span> <span class="logcat-tag">$2</span>'
+              );
+
+              if (logcatFilter.text) {
+                const searchTerms = logcatFilter.text.trim().split(/\s+/).filter(t => t.length > 0);
+                searchTerms.forEach(term => {
+                  const regex = new RegExp(`(${escapeRegex(term)})`, 'ig');
+                  display = display.replace(regex, '<mark class="logcat-highlight">$1</mark>');
+                });
+              }
+              return `<div class="logcat-line level-${level}">${display}</div>`;
+            }).join('');
+          }
+
+          // Multiple lines - show timestamp/tag once, then just messages
+          const firstLine = groupLines[0];
+          const headerMatch = firstLine.match(/^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+([VDIWEF]\/[^:]+:)\s*(.*)$/);
+
+          if (!headerMatch) {
+            // Fallback to original rendering if pattern doesn't match
+            const renderedLines = groupLines.map(line => {
+              let display = escapeHtml(line);
+              display = display.replace(
+                /^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+([VDIWEF]\/[^:]+:)/,
+                '<span class="logcat-timestamp">$1</span> <span class="logcat-tag">$2</span>'
+              );
+              return display;
+            }).join('<br>');
+            return `<div class="logcat-line level-${level}">${renderedLines}</div>`;
+          }
+
+          // Extract header (timestamp + tag) and first message
+          const timestamp = headerMatch[1];
+          const tag = headerMatch[2];
+          const firstMessage = headerMatch[3];
+
+          let header = `<span class="logcat-timestamp">${escapeHtml(timestamp)}</span> <span class="logcat-tag">${escapeHtml(tag)}</span>`;
+
+          // Collect all messages (first line's message + subsequent lines)
+          const messages = [];
+          for (let i = 0; i < groupLines.length; i++) {
+            const msgMatch = groupLines[i].match(/^(?:\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+(?:[VDIWEF]\/[^:]+:)\s*(.*)$/);
+            messages.push(msgMatch ? msgMatch[1] : groupLines[i]);
+          }
+
+          // Apply highlighting and escape to messages
+          let renderedMessages = messages.map((msg, idx) => {
+            let display = escapeHtml(msg);
+            if (logcatFilter.text) {
+              const searchTerms = logcatFilter.text.trim().split(/\s+/).filter(t => t.length > 0);
+              searchTerms.forEach(term => {
+                const regex = new RegExp(`(${escapeRegex(term)})`, 'ig');
+                display = display.replace(regex, '<mark class="logcat-highlight">$1</mark>');
+              });
+            }
+            // First message inline, rest on new lines with indent
+            if (idx === 0) {
+              return display;
+            }
+            return `<span class="logcat-message-continuation">${display}</span>`;
+          }).join('');
+
+          return `<div class="logcat-line level-${level}">${header} ${renderedMessages}</div>`;
+        })
+        .join('');
+    }
+
+    function updateLogcatDom(forceStick = false, options = {}) {
+      const { forceTop = false, forceFull = false } = options;
+      const container = document.getElementById('logcatContent');
+      if (!container) return;
+      const currentVersion = logcatRenderVersion;
+      const prevScrollTop = container.scrollTop;
+      const prevHeight = container.scrollHeight;
+      const nearTop = prevScrollTop < 40; // Changed: check if near top instead of bottom
+
+      const filtered = getFilteredLogcat();
+      const hasEmptyState = container.querySelector('.logcat-empty');
+      const needsFullRender = forceFull || currentVersion !== lastRenderedVersion || hasEmptyState;
+
+      if (needsFullRender) {
+        container.innerHTML = renderLogcatContentLines(filtered);
+        lastRenderedVersion = currentVersion;
+        lastRenderedCount = filtered.length;
+      } else if (filtered.length >= lastRenderedCount) {
+        // Prepend new lines at the top since we're showing newest first
+        const fragment = document.createDocumentFragment();
+        const newLines = filtered.slice(0, filtered.length - lastRenderedCount);
+        if (newLines.length) {
+          const temp = document.createElement('div');
+          temp.innerHTML = renderLogcatContentLines(newLines);
+          while (temp.firstChild) fragment.appendChild(temp.firstChild);
+
+          // Measure height before insertion
+          const heightBefore = container.scrollHeight;
+          container.insertBefore(fragment, container.firstChild);
+
+          // Adjust scroll to compensate for new content at top
+          if (!logcatAutoscroll) {
+            requestAnimationFrame(() => {
+              const heightAfter = container.scrollHeight;
+              const addedHeight = heightAfter - heightBefore;
+              if (addedHeight > 0) {
+                container.scrollTop = prevScrollTop + addedHeight;
+              }
+            });
+          }
+
+          lastRenderedCount = filtered.length;
+        }
+      } else {
+        // Filter change removed lines
+        container.innerHTML = renderLogcatContentLines(filtered);
+        lastRenderedCount = filtered.length;
+      }
+
+      if (forceTop) {
+        requestAnimationFrame(() => {
+          container.scrollTop = 0;
+        });
+        return;
+      }
+
+      const shouldStick = logcatAutoscroll && (forceStick || nearTop);
+      if (shouldStick) {
+        // Keep at top for newest logs
+        requestAnimationFrame(() => {
+          container.scrollTop = 0;
+        });
+      }
+      // Note: scroll preservation for !logcatAutoscroll is already handled
+      // in the incremental update section above (lines 1647-1650)
+    }
+
+    function appendLogcatLines(lines) {
+      if (!Array.isArray(lines) || lines.length === 0) return;
+      const container = document.getElementById('logcatContent');
+      const nearTop = container ? (container.scrollTop < 40) : true;
+      detectCrash(lines);
+      logcatLines.push(...lines);
+      if (logcatLines.length > LOGCAT_MAX_LINES) {
+        logcatLines = logcatLines.slice(-LOGCAT_MAX_LINES);
+      }
+      scheduleLogcatRender(nearTop);
+    }
+
+    function clearLogcat() {
+      fetch('/logcat/clear', { method: 'POST' })
+        .then(() => {
+          // Don't call refreshLogcatBuffer - the 'logcatCleared' event will clear the local buffer
+          // and new logs will come through the event stream naturally
+          refreshPidList(); // Auto-refresh PID list after clear
+        })
+        .catch(err => console.warn('Failed to clear logcat', err));
+    }
+
+    function handleLogcatFilter(event) {
+      logcatFilter.text = event.target.value || '';
+      logcatRenderVersion++;
+      updateLogcatDom(false, { forceTop: true, forceFull: true });
+    }
+
+    function handleLogcatAutoscroll(event) {
+      logcatAutoscroll = !!event.target.checked;
+      if (logcatAutoscroll) {
+        const container = document.getElementById('logcatContent');
+        if (container) {
+          requestAnimationFrame(() => container.scrollTop = 0);
+        }
+      }
+    }
+
+    function handleLogcatWrapLines(event) {
+      logcatWrapLines = !!event.target.checked;
+      const container = document.getElementById('logcatContent');
+      if (container) {
+        if (logcatWrapLines) {
+          container.classList.add('wrap-lines');
+        } else {
+          container.classList.remove('wrap-lines');
+        }
+      }
+    }
+
+    function scheduleLogcatRender(nearBottom) {
+      logcatShouldStick = logcatShouldStick || nearBottom;
+      if (logcatRenderTimer) return;
+      logcatRenderTimer = setTimeout(() => {
+        logcatRenderTimer = null;
+        const stick = logcatShouldStick;
+        logcatShouldStick = false;
+        updateLogcatDom(stick);
+      }, LOGCAT_RENDER_DEBOUNCE_MS);
+    }
+
+    async function refreshLogcatBuffer(forceTop = false) {
+      try {
+        const res = await fetch('/logcat');
+        if (!res.ok) return;
+        const payload = await res.json();
+        const lines = Array.isArray(payload.lines) ? payload.lines : [];
+        logcatLines = lines.slice(-LOGCAT_MAX_LINES);
+        lastRenderedCount = 0;
+        logcatRenderVersion++;
+        updateLogcatDom(false, { forceTop, forceFull: true });
+      } catch (err) {
+        console.warn('Failed to refresh logcat buffer', err);
+      }
+    }
+
+    function detectCrash(lines) {
+      // Skip crash detection if disabled (e.g., right after buffer clear)
+      if (!crashDetectionEnabled) return;
+
+      const patterns = [
+        /FATAL EXCEPTION/i,
+        /Fatal signal/i,
+        /has died: fore/i,
+        /ANR in/i
+      ];
+      for (const line of lines) {
+        if (patterns.some(re => re.test(line))) {
+          const signature = line.slice(0, 200);
+          if (signature !== lastCrashSignature) {
+            lastCrashSignature = signature;
+            showCrashToast(line);
+            notifyCrash(line);
+          }
+          break;
+        }
+      }
+    }
+
+    function showCrashToast(message) {
+      const toast = document.getElementById('crashToast');
+      if (!toast) return;
+      toast.textContent = `Crash detected: ${message.slice(0, 140)}`;
+      toast.classList.add('show');
+      if (crashToastTimer) clearTimeout(crashToastTimer);
+      crashToastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 7000);
+    }
+
+    function notifyCrash(message) {
+      if (typeof Notification === 'undefined') return;
+      const payload = { body: message.slice(0, 120) };
+      if (Notification.permission === 'granted') {
+        new Notification('Crash detected', payload);
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => {
+          if (perm === 'granted') {
+            new Notification('Crash detected', payload);
+          }
+        });
+      }
+    }
+
+    async function handleLogcatLevel(event) {
+      const level = event.target.value || 'all';
+      logcatFilter.level = level;
+
+      try {
+        // Send level change to server to restart adb with level filter
+        const res = await fetch('/logcat/level', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level })
+        });
+        if (res.ok) {
+          // Server will clear buffer and restart adb, new logs will come via SSE
+          console.log(`Log level filter applied: ${level}`);
+        }
+      } catch (err) {
+        console.warn('Failed to apply log level filter', err);
+      }
+    }
+
+    function updateCount() {
+      const visibleCount = apiCalls
+        .filter(call => matchesUserAgent(call) && !isCallExcluded(call))
+        .length;
+      document.getElementById('count').textContent = visibleCount;
+    }
+
+    async function clearLogs() {
+      try {
+        console.log('🗑️ Clear button clicked, sending request...');
+        const response = await fetch('/clear', { method: 'POST' });
+        const result = await response.json();
+        console.log('✓ Clear response received:', result);
+      } catch (err) {
+        console.error('❌ Failed to clear logs:', err);
+        alert('Failed to clear logs: ' + err.message);
+      }
+    }
+
+    function handleSearch() {
+      searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      renderApiList();
+    }
+
+    async function fetchAdbStatus() {
+      try {
+        const res = await fetch('/adb/status');
+        const data = await res.json().catch(() => ({}));
+        const statusEl = document.getElementById('logcatStatus');
+        if (!statusEl) return;
+
+        if (data.found && data.deviceId) {
+          statusEl.style.display = 'none';
+        } else if (data.found && !data.deviceId) {
+          statusEl.textContent = 'adb found, but no device detected. Plug in a device and enable USB debugging.';
+          statusEl.style.display = 'block';
+        } else {
+          statusEl.textContent = 'adb not found on PATH. Install Android platform-tools or add adb to PATH.';
+          statusEl.style.display = 'block';
+        }
+      } catch (err) {
+        console.warn('Failed to fetch adb status', err);
+      }
+    }
+
+    async function fetchDeviceInfo() {
+      try {
+        const res = await fetch('/device');
+        const data = await res.json().catch(() => ({}));
+        const deviceEl = document.getElementById('deviceInfo');
+        const deviceText = document.getElementById('deviceNameText');
+        if (!deviceEl || !deviceText) return;
+
+        if (data.deviceName || data.deviceId) {
+          const multi = Array.isArray(data.devices) && data.devices.length > 1;
+          deviceText.textContent = multi
+            ? `${data.devices.length} devices connected`
+            : (data.deviceName || data.deviceId);
+          deviceEl.style.display = 'inline-flex';
+        } else {
+          deviceText.textContent = 'No device detected';
+          deviceEl.style.display = 'inline-flex';
+        }
+      } catch (err) {
+        console.warn('Failed to fetch device info', err);
+      }
+    }
+
+    function setupAppFilter() {
+      const dropdown = document.getElementById('appFilter');
+      if (dropdown) {
+        dropdown.addEventListener('change', handleAppFilterChange);
+      }
+      renderAppFilterOptions();
+    }
+
+    function renderAppFilterOptions() {
+      const dropdown = document.getElementById('appFilter');
+      if (!dropdown) return;
+
+      const options = ['<option value="all">All User Agents</option>'];
+      userAgentState.ordered.forEach(agent => {
+        const value = escapeHtml(agent);
+        // Display only first word (split by space)
+        const firstWord = agent.split(' ')[0];
+        const displayText = escapeHtml(firstWord);
+        options.push(`<option value="${value}" title="${value}">${displayText}</option>`);
+      });
+      dropdown.innerHTML = options.join('');
+
+      const desiredValue = userAgentState.selected !== 'all' && userAgentState.known.has(userAgentState.selected)
+        ? userAgentState.selected
+        : 'all';
+      userAgentState.selected = desiredValue;
+      dropdown.value = desiredValue;
+    }
+
+    function handleAppFilterChange(event) {
+      userAgentState.selected = event.target.value;
+      renderApiList();
+      updateCount();
+    }
+
+    function resetUserAgents() {
+      userAgentState.known = new Set();
+      userAgentState.ordered = [];
+      userAgentState.selected = 'all';
+      if (userAgentState.flashTimeout) {
+        clearTimeout(userAgentState.flashTimeout);
+        userAgentState.flashTimeout = null;
+      }
+      const dropdown = document.getElementById('appFilter');
+      if (dropdown) {
+        dropdown.classList.remove('flash');
+      }
+      renderAppFilterOptions();
+    }
+
+    function syncUserAgentsFromCalls(calls) {
+      const previousSelection = userAgentState.selected;
+      const previousAgents = new Set(userAgentState.ordered);
+      const nextAgents = [];
+      const nextSet = new Set();
+
+      (calls || []).forEach(call => {
+        const agent = extractUserAgent(call);
+        if (agent && !nextSet.has(agent)) {
+          nextSet.add(agent);
+          nextAgents.push(agent);
+        }
+      });
+
+      const hasNewAgent = nextAgents.some(agent => !previousAgents.has(agent));
+
+      userAgentState.ordered = nextAgents;
+      userAgentState.known = nextSet;
+
+      if (previousSelection !== 'all' && !nextSet.has(previousSelection)) {
+        userAgentState.selected = 'all';
+      } else {
+        userAgentState.selected = previousSelection;
+      }
+
+      renderAppFilterOptions();
+
+      if (hasNewAgent && nextAgents.length > 0) {
+        flashAppFilter();
+      }
+    }
+
+    function matchesUserAgent(call) {
+      if (userAgentState.selected === 'all') return true;
+      return extractUserAgent(call) === userAgentState.selected;
+    }
+
+    function extractUserAgent(call) {
+      if (!call || !call.requestHeaders) return null;
+      for (const [key, value] of Object.entries(call.requestHeaders)) {
+        if (key && key.toLowerCase() === 'user-agent') {
+          return value;
+        }
+      }
+      return null;
+    }
+
+    function flashAppFilter() {
+      const dropdown = document.getElementById('appFilter');
+      if (!dropdown) return;
+      dropdown.classList.remove('flash');
+      // Force reflow so animation can restart
+      void dropdown.offsetWidth;
+      dropdown.classList.add('flash');
+      if (userAgentState.flashTimeout) {
+        clearTimeout(userAgentState.flashTimeout);
+      }
+      userAgentState.flashTimeout = setTimeout(() => {
+        dropdown.classList.remove('flash');
+      }, 1600);
+    }
+
+    function matchesSearch(call) {
+      if (!searchQuery) return true;
+
+      const searchText = searchQuery.toLowerCase();
+      const url = call.url.toLowerCase();
+      const method = call.method.toLowerCase();
+      const status = call.responseStatus ? call.responseStatus.toString() : '';
+
+      return url.includes(searchText) ||
+             method.includes(searchText) ||
+             status.includes(searchText);
+    }
+
+    function getPatternForCall(call) {
+      try {
+        const urlObj = new URL(call.url, 'http://dummy');
+        return urlObj.pathname || call.url;
+      } catch (e) {
+        return call.url;
+      }
+    }
+
+    function isCallExcluded(call) {
+      if (!excludedPatterns || excludedPatterns.length === 0) return false;
+      const rawUrl = call.url || '';
+      let path = '';
+      try {
+        path = new URL(rawUrl, 'http://dummy').pathname;
+      } catch (e) {
+        path = rawUrl;
+      }
+
+      return excludedPatterns.some(pattern => {
+        if (!pattern) return false;
+        return rawUrl.includes(pattern) || path.includes(pattern);
+      });
+    }
+
+    function renderExcludedPatterns() {
+      const container = document.getElementById('excludedContainer');
+      if (!container) return;
+
+      if (!excludedPatterns || excludedPatterns.length === 0) {
+        container.classList.remove('visible');
+        container.innerHTML = '';
+        return;
+      }
+
+      container.classList.add('visible');
+      container.innerHTML = `
+        <div class="excluded-label">Excluded:</div>
+        <div class="excluded-chips">
+          ${excludedPatterns.map(pattern => `
+            <span class="excluded-chip">
+              <span>${escapeHtml(pattern)}</span>
+              <button class="excluded-remove-btn" onclick="removeExcludedPattern('${encodeURIComponent(pattern)}')" title="Show this API again">✕</button>
+            </span>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderApiList() {
+      const listEl = document.getElementById('apiList');
+
+      if (apiCalls.length === 0) {
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🔍</div>
+            <div>Waiting for API calls...</div>
+          </div>
+        `;
+        return;
+      }
+
+      const visibleCalls = apiCalls.filter(call =>
+        matchesSearch(call) &&
+        matchesUserAgent(call) &&
+        !isCallExcluded(call)
+      );
+
+      if (visibleCalls.length === 0) {
+        const hasSearch = (searchQuery || '').trim() !== '';
+        const hasUserAgentFilter = userAgentState.selected !== 'all';
+        let emptyMessage = 'No requests available.';
+        if (hasSearch && !hasUserAgentFilter) {
+          emptyMessage = `No results found for "${escapeHtml(searchQuery)}"`;
+        } else if (!hasSearch && hasUserAgentFilter) {
+          emptyMessage = 'No requests from this user agent yet.';
+        } else if (hasSearch && hasUserAgentFilter) {
+          emptyMessage = 'No requests match the current filters.';
+        }
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🔍</div>
+            <div>${emptyMessage}</div>
+          </div>
+        `;
+        return;
+      }
+
+      const wasSelectedCallVisible = selectedCall && visibleCalls.some(call => call.id === selectedCall.id);
+      if (selectedCall && !wasSelectedCallVisible) {
+        selectedCall = null;
+        resetBodyViewState();
+        currentTab = 'request';
+        renderDetail();
+      }
+
+      // Preserve scroll position of the detail panel before manipulating DOM
+      const tabContent = document.getElementById('tabContent');
+      const detailScrollPos = tabContent ? tabContent.scrollTop : 0;
+
+      listEl.innerHTML = visibleCalls.map(call => {
+        let displayUrl = call.url;
+        try {
+          const urlObj = new URL(call.url, 'http://dummy');
+          displayUrl = urlObj.pathname + urlObj.search;
+        } catch (e) {
+          displayUrl = call.url;
+        }
+        const statusClass = call.responseStatus
+          ? (call.responseStatus >= 200 && call.responseStatus < 300 ? 'success' : 'error')
+          : 'pending';
+
+        return `
+          <div class="api-item ${selectedCall?.id === call.id ? 'selected' : ''}" onclick="selectCall('${call.id}')">
+            <button class="exclude-btn" onclick="excludeApi(event, '${call.id}')" title="Hide requests matching this path">Exclude</button>
+            <div class="api-item-header">
+              <span class="method ${call.method}">${call.method}</span>
+              ${call.responseStatus ? `<span class="status-code ${statusClass}">${call.responseStatus}</span>` : ''}
+            </div>
+            <div class="api-url" title="${call.url}">${displayUrl}</div>
+            <div class="api-meta">
+              <span>⏱ ${call.responseTime || 'pending'}</span>
+              <span>🕐 ${call.timestamp}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Restore detail panel scroll position after DOM manipulation
+      if (tabContent && wasSelectedCallVisible) {
+        // Use requestAnimationFrame to ensure DOM has been updated
+        requestAnimationFrame(() => {
+          if (tabContent) {
+            tabContent.scrollTop = detailScrollPos;
+          }
+        });
+      }
+    }
+
+    function excludeApi(event, callId) {
+      event.stopPropagation();
+      const call = apiCalls.find(c => c.id == callId);
+      if (!call) return;
+
+      const pattern = getPatternForCall(call);
+      if (selectedCall?.id == call.id) {
+        selectedCall = null;
+        resetBodyViewState();
+        currentTab = 'request';
+        renderDetail();
+      }
+      fetch('/exclude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern })
+      }).catch(err => console.error('Failed to exclude pattern', err));
+    }
+
+    function removeExcludedPattern(encodedPattern) {
+      const pattern = decodeURIComponent(encodedPattern);
+      fetch('/include', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern })
+      }).catch(err => console.error('Failed to include pattern', err));
+    }
+
+    function selectCall(id) {
+      selectedCall = apiCalls.find(c => c.id == id);
+      currentTab = 'request';
+      resetBodyViewState();
+      renderApiList();
+      renderDetail();
+    }
+
+    function closeDetail() {
+      selectedCall = null;
+      resetBodyViewState();
+      currentTab = 'request';
+      renderApiList();
+      renderDetail();
+    }
+
+    function handleGlobalKeydown(e) {
+      if (e.key === 'Escape') {
+        // If a detail is open, close it (simulate close button)
+        if (selectedCall) {
+          e.preventDefault();
+          closeDetail();
+        }
+      }
+    }
+
+    function renderDetail() {
+      const panel = document.getElementById('detailPanel');
+      if (!panel) return;
+      if (!selectedCall) {
+        panel.innerHTML = renderLogcatPanel();
+        logcatPanelMounted = true;
+
+        // Render existing logs after DOM is ready
+        setTimeout(() => {
+          if (logcatLines.length > 0) {
+            updateLogcatDom(false, { forceFull: true });
+          } else {
+            refreshLogcatBuffer(true);
+          }
+        }, 0);
+        return;
+      }
+
+      const statusClass = selectedCall.responseStatus
+        ? (selectedCall.responseStatus >= 200 && selectedCall.responseStatus < 300 ? 'success' : 'error')
+        : 'pending';
+      const requestTabClass = currentTab === 'request' ? 'tab active' : 'tab';
+      const responseTabClass = currentTab === 'response' ? 'tab active' : 'tab';
+
+      panel.innerHTML = `
+        <div class="detail-header">
+          <div>
+            <div class="detail-url">${selectedCall.url}</div>
+            <div class="detail-meta">
+              <span><strong>Method:</strong> ${selectedCall.method}</span>
+              ${selectedCall.responseStatus ? `<span><strong>Status:</strong> <span class="status-code ${statusClass}">${selectedCall.responseStatus}</span></span>` : ''}
+              ${selectedCall.responseTime ? `<span><strong>Time:</strong> ${selectedCall.responseTime}</span>` : ''}
+            </div>
+          </div>
+          <button class="close-detail-btn" onclick="closeDetail()" title="Close and view logcat">✕</button>
+        </div>
+
+        <div class="tabs">
+          <div class="${requestTabClass}" data-tab="request" onclick="switchTab('request')">Request</div>
+          <div class="${responseTabClass}" data-tab="response" onclick="switchTab('response')">Response</div>
+        </div>
+
+        <div class="tab-content" id="tabContent">
+          ${currentTab === 'request' ? renderRequestTab() : renderResponseTab()}
+        </div>
+
+        <div class="curl-section">
+          <div class="curl-options">
+            <label class="curl-checkbox">
+              <input type="checkbox" id="randomizeLocation" ${randomizationEnabled.location ? 'checked' : ''} onchange="handleRandomizationChange()">
+              <span>Randomize location</span>
+            </label>
+            <label class="curl-checkbox">
+              <input type="checkbox" id="randomizeIds" ${randomizationEnabled.ids ? 'checked' : ''} onchange="handleRandomizationChange()">
+              <span>Randomize device IDs</span>
+            </label>
+            <label class="curl-checkbox">
+              <input type="checkbox" id="randomizeTokens" ${randomizationEnabled.tokens ? 'checked' : ''} onchange="handleRandomizationChange()">
+              <span>Randomize access tokens</span>
+            </label>
+          </div>
+          <button class="copy-curl-btn" onclick="copyCurl()">📋 Copy as cURL</button>
+        </div>
+      `;
+      refreshTabUI();
+    }
+
+    function handleRandomizationChange() {
+      randomizationEnabled.location = document.getElementById('randomizeLocation')?.checked || false;
+      randomizationEnabled.ids = document.getElementById('randomizeIds')?.checked || false;
+      randomizationEnabled.tokens = document.getElementById('randomizeTokens')?.checked || false;
+
+      // Re-render the current tab to apply randomization
+      refreshTabUI();
+    }
+
+    function switchTab(tab) {
+      if (currentTab === tab) return;
+      currentTab = tab;
+      refreshTabUI();
+    }
+
+    function renderRequestTab() {
+      // Apply randomization to headers
+      let headers = {...(selectedCall.requestHeaders || {})};
+      if (randomizationEnabled.ids || randomizationEnabled.tokens) {
+        headers = randomizeHeaders(headers, randomizationEnabled.ids, randomizationEnabled.tokens, selectedCall.id);
+      }
+      const headerEntries = Object.entries(headers);
+
+      const bodyHtml = getBodyHtml('request');
+      const hasBody = bodyHtml !== null;
+      const showFormatButton = shouldShowFormatButton('request');
+      const formatLabel = bodyViewState.request.formatted ? 'Show Raw' : 'Beautify JSON';
+      const errorMessage = bodyViewState.request.error;
+
+      return `
+        ${headerEntries.length > 0 ? `
+          <div class="section">
+            <div class="section-title">Headers</div>
+            <table class="headers-table">
+              ${headerEntries.map(([k, v]) => `
+                <tr>
+                  <td>${escapeHtml(k)}</td>
+                  <td>${escapeHtml(v)}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+        ` : ''}
+
+        ${hasBody ? `
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Body</div>
+              <div>
+                ${showFormatButton ? `<button class="format-btn" onclick="toggleFormatBody('request')">${formatLabel}</button>` : ''}
+                <button class="copy-btn" onclick="copyToClipboard('request')" title="Copy request body">📋</button>
+              </div>
+            </div>
+            <div class="json-viewer">${bodyHtml}</div>
+            ${errorMessage ? `<div class="format-error">${escapeHtml(errorMessage)}</div>` : ''}
+          </div>
+        ` : '<div class="no-data">No request body</div>'}
+      `;
+    }
+
+    function renderResponseTab() {
+      // Initialize seeded random based on request ID for consistent randomization
+      seededRandom = createSeededRandom(selectedCall.id);
+
+      // Apply randomization to headers (response headers don't usually have tokens/IDs, but we'll apply for consistency)
+      let headers = {...(selectedCall.responseHeaders || {})};
+      const headerEntries = Object.entries(headers);
+
+      const bodyHtml = getBodyHtml('response');
+      const hasBody = bodyHtml !== null;
+      const showFormatButton = shouldShowFormatButton('response');
+      const formatLabel = bodyViewState.response.formatted ? 'Show Raw' : 'Beautify JSON';
+      const errorMessage = bodyViewState.response.error;
+      const htmlPreviewActive = bodyViewState.response.htmlPreview;
+      const body = selectedCall.responseBody;
+
+      return `
+        ${headerEntries.length > 0 ? `
+          <div class="section">
+            <div class="section-title">Headers</div>
+            <table class="headers-table">
+              ${headerEntries.map(([k, v]) => `
+                <tr>
+                  <td>${escapeHtml(k)}</td>
+                  <td>${escapeHtml(v)}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>
+        ` : ''}
+
+        ${hasBody ? `
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">Body</div>
+              <div>
+                ${showFormatButton ? `<button class="format-btn" onclick="toggleFormatBody('response')">${formatLabel}</button>` : ''}
+                ${shouldShowHtmlToggle('response') ? `<button class="html-toggle-btn" onclick="toggleHtmlPreview('response')">${htmlPreviewActive ? '📝 Source' : '🌐 Preview'}</button>` : ''}
+                <button class="copy-btn" onclick="copyToClipboard('response')" title="Copy response body">📋</button>
+              </div>
+            </div>
+            ${htmlPreviewActive && shouldShowHtmlToggle('response') ? `
+              <div class="html-preview-container">
+                <iframe srcdoc="${escapeHtml(body).replace(/"/g, '&quot;')}"></iframe>
+              </div>
+            ` : `<div class="json-viewer">${bodyHtml}</div>`}
+            ${errorMessage ? `<div class="format-error">${escapeHtml(errorMessage)}</div>` : ''}
+          </div>
+        ` : '<div class="no-data">No response body</div>'}
+      `;
+    }
+
+    function getBodyData(type) {
+      if (!selectedCall) return { json: null, raw: null };
+      const jsonKey = type === 'request' ? 'requestBodyJson' : 'responseBodyJson';
+      const rawKey = type === 'request' ? 'requestBody' : 'responseBody';
+      return {
+        json: selectedCall[jsonKey],
+        raw: selectedCall[rawKey]
+      };
+    }
+
+    function isHtmlContent(raw, headers) {
+      if (!raw || typeof raw !== 'string') return false;
+      // Check content-type header
+      if (headers) {
+        for (const [key, value] of Object.entries(headers)) {
+          if (key.toLowerCase() === 'content-type') {
+            if (value.toLowerCase().includes('text/html')) {
+              return true;
+            }
+          }
+        }
+      }
+      // Check if content looks like HTML
+      const trimmed = raw.trim();
+      return trimmed.startsWith('<!DOCTYPE html') ||
+             trimmed.startsWith('<html') ||
+             (trimmed.includes('<html') && trimmed.includes('</html>'));
+    }
+
+    function shouldShowFormatButton(type) {
+      const { json, raw } = getBodyData(type);
+      if (json && typeof json === 'object') return false;
+      if (typeof raw !== 'string') return false;
+      return looksLikeJson(raw);
+    }
+
+    function shouldShowHtmlToggle(type) {
+      if (type !== 'response') return false; // Only for responses
+      const { raw } = getBodyData(type);
+      const headers = selectedCall?.responseHeaders || {};
+      return isHtmlContent(raw, headers);
+    }
+
+    function getBodyHtml(type) {
+      let { json, raw } = getBodyData(type);
+      const state = bodyViewState[type] || { formatted: false, formattedHtml: null, error: null };
+
+      // Apply randomization to body data
+      if (json && typeof json === 'object') {
+        json = randomizeData(json, randomizationEnabled.location, randomizationEnabled.ids, randomizationEnabled.tokens, selectedCall.id);
+        return renderJson(json);
+      }
+
+      if (state.formatted && state.formattedHtml) {
+        // Need to re-apply randomization for formatted view
+        try {
+          const parsed = JSON.parse(raw.trim());
+          const randomized = randomizeData(parsed, randomizationEnabled.location, randomizationEnabled.ids, randomizationEnabled.tokens, selectedCall.id);
+          return syntaxHighlight(JSON.stringify(randomized, null, 2));
+        } catch (e) {
+          return state.formattedHtml;
+        }
+      }
+
+      if (raw === undefined || raw === null || raw === '') {
+        return null;
+      }
+
+      if (typeof raw === 'string') {
+        // Try to parse and randomize if it's JSON
+        try {
+          const parsed = JSON.parse(raw.trim());
+          const randomized = randomizeData(parsed, randomizationEnabled.location, randomizationEnabled.ids, randomizationEnabled.tokens, selectedCall.id);
+          return escapeHtml(JSON.stringify(randomized));
+        } catch (e) {
+          // Not JSON, return as-is
+          return escapeHtml(raw);
+        }
+      }
+
+      return renderJson(raw);
+    }
+
+    function toggleFormatBody(type) {
+      if (!bodyViewState[type]) {
+        bodyViewState[type] = { formatted: false, formattedHtml: null, error: null };
+      }
+
+      const state = bodyViewState[type];
+      const { json, raw } = getBodyData(type);
+
+      if (json && typeof json === 'object') {
+        // Already have parsed JSON, nothing extra to do
+        return;
+      }
+
+      if (state.formatted) {
+        bodyViewState[type] = { formatted: false, formattedHtml: null, error: null };
+        refreshTabUI();
+        return;
+      }
+
+      if (typeof raw !== 'string') {
+        bodyViewState[type].error = 'Body is not a JSON string.';
+        refreshTabUI();
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw.trim());
+        const formattedHtml = syntaxHighlight(JSON.stringify(parsed, null, 2));
+        bodyViewState[type] = { formatted: true, formattedHtml, error: null };
+        refreshTabUI();
+      } catch (err) {
+        bodyViewState[type].error = 'Unable to format JSON: ' + err.message;
+        bodyViewState[type].formatted = false;
+        bodyViewState[type].formattedHtml = null;
+        refreshTabUI();
+      }
+    }
+
+    function toggleHtmlPreview(type) {
+      if (!bodyViewState[type]) {
+        bodyViewState[type] = { formatted: false, formattedHtml: null, error: null, htmlPreview: false };
+      }
+
+      bodyViewState[type].htmlPreview = !bodyViewState[type].htmlPreview;
+      refreshTabUI();
+    }
+
+    function copyToClipboard(type) {
+      if (!selectedCall) return;
+
+      const { raw, json } = getBodyData(type);
+      let textToCopy = '';
+
+      // If we have JSON, stringify it with formatting
+      if (json && typeof json === 'object') {
+        textToCopy = JSON.stringify(json, null, 2);
+      } else if (raw) {
+        textToCopy = raw;
+      } else {
+        return;
+      }
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        // Find the button and show success state
+        const buttons = document.querySelectorAll('.copy-btn');
+        buttons.forEach(btn => {
+          if (btn.onclick.toString().includes(`'${type}'`)) {
+            btn.classList.add('copied');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✓';
+            setTimeout(() => {
+              btn.classList.remove('copied');
+              btn.innerHTML = originalText;
+            }, 1500);
+          }
+        });
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard');
+      });
+    }
+
+    function refreshTabUI() {
+      const tabEls = document.querySelectorAll('.tabs .tab');
+      tabEls.forEach(el => {
+        const tabType = el.dataset.tab;
+        if (!tabType) return;
+        el.classList.toggle('active', tabType === currentTab);
+      });
+
+      const content = document.getElementById('tabContent');
+      if (content && selectedCall) {
+        // Preserve scroll position
+        const scrollPos = content.scrollTop;
+        content.innerHTML = currentTab === 'request' ? renderRequestTab() : renderResponseTab();
+        content.scrollTop = scrollPos;
+      }
+    }
+
+    function looksLikeJson(raw) {
+      if (typeof raw !== 'string') return false;
+      const trimmed = raw.trim();
+      if (!trimmed) return false;
+      return trimmed.startsWith('{') || trimmed.startsWith('[');
+    }
+
+    // Seeded random number generator for consistent randomization per request
+    function createSeededRandom(seed) {
+      let state = seed;
+      return function() {
+        state = (state * 1103515245 + 12345) & 0x7fffffff;
+        return state / 0x7fffffff;
+      };
+    }
+
+    let seededRandom = Math.random;
+
+    // Helper functions for randomization
+    function randomLat() {
+      return (seededRandom() * 180 - 90).toFixed(7);
+    }
+
+    function randomLng() {
+      return (seededRandom() * 360 - 180).toFixed(7);
+    }
+
+    function randomDeviceId(originalLength = 16) {
+      return Array.from({length: originalLength}, () =>
+        Math.floor(seededRandom() * 16).toString(16)
+      ).join('');
+    }
+
+    function randomUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = seededRandom() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function randomToken(originalToken = null) {
+      // Generate a JWT-like token with random base64 strings
+      const randomBase64 = (length) => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        return Array.from({length}, () => chars[Math.floor(seededRandom() * chars.length)]).join('');
+      };
+
+      // If original token provided, match its length
+      if (originalToken && typeof originalToken === 'string') {
+        // Check if it's a JWT format (3 parts separated by dots)
+        const parts = originalToken.split('.');
+        if (parts.length === 3) {
+          return `${randomBase64(parts[0].length)}.${randomBase64(parts[1].length)}.${randomBase64(parts[2].length)}`;
+        }
+        // Otherwise, match the full length
+        return randomBase64(originalToken.length);
+      }
+
+      // JWT format: header.payload.signature (default)
+      return `${randomBase64(36)}.${randomBase64(180)}.${randomBase64(43)}`;
+    }
+
+    function randomizeHeaders(headers, randomizeIds, randomizeTokens, seedBase) {
+      if (!randomizeIds && !randomizeTokens) {
+        return headers; // Return original if nothing to randomize
+      }
+
+      const randomized = {...headers};
+
+      for (let key in randomized) {
+        const lowerKey = key.toLowerCase();
+        const originalValue = randomized[key];
+
+        // Category 2: DEVICE IDs ONLY (device-related headers, NO sessions)
+        if (randomizeIds) {
+          if (lowerKey === 'device' ||
+              (lowerKey.includes('device') && (lowerKey.includes('id') || lowerKey.includes('uid')))) {
+            // Use separate seed for device IDs
+            seededRandom = createSeededRandom(seedBase + 1);
+            randomized[key] = randomDeviceId(originalValue ? originalValue.length : 16);
+            continue;
+          }
+        }
+
+        // Category 3: TOKENS & SESSIONS (access tokens, session IDs, authorization, access keys)
+        if (randomizeTokens) {
+          // Session IDs in headers
+          if (lowerKey.includes('session') && lowerKey.includes('id')) {
+            // Use separate seed for tokens
+            seededRandom = createSeededRandom(seedBase + 2);
+            randomized[key] = randomUUID();
+            continue;
+          }
+          // Tokens and access-related headers
+          else if (lowerKey.includes('token') || lowerKey.includes('access') ||
+                   lowerKey === 'authorization' || lowerKey.includes('auth')) {
+            if (originalValue && originalValue.length > 20) {
+              // Use separate seed for tokens
+              seededRandom = createSeededRandom(seedBase + 2);
+              randomized[key] = randomToken(originalValue);
+            }
+            continue;
+          }
+        }
+      }
+
+      return randomized;
+    }
+
+    function randomizeData(data, randomizeLocation, randomizeIds, randomizeTokens, seedBase) {
+      // If nothing to randomize, return original
+      if (!randomizeLocation && !randomizeIds && !randomizeTokens) {
+        return data;
+      }
+
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch (e) {
+          return data;
+        }
+      }
+
+      const clone = JSON.parse(JSON.stringify(data));
+
+      function traverse(obj) {
+        if (typeof obj !== 'object' || obj === null) return;
+
+        for (let key in obj) {
+          const lowerKey = key.toLowerCase();
+          const originalValue = obj[key];
+
+          // Category 1: LOCATION ONLY (lat/lng coordinates)
+          if (randomizeLocation) {
+            if (lowerKey === 'latitude' || lowerKey === 'lat') {
+              // Use separate seed for location
+              seededRandom = createSeededRandom(seedBase + 0);
+              obj[key] = parseFloat(randomLat());
+              continue;
+            } else if (lowerKey === 'longitude' || lowerKey === 'lng' || lowerKey === 'lon') {
+              // Use separate seed for location
+              seededRandom = createSeededRandom(seedBase + 0);
+              obj[key] = parseFloat(randomLng());
+              continue;
+            } else if (lowerKey === 'location' && typeof originalValue === 'string') {
+              // Handle "lat,lng" format
+              const parts = originalValue.split(',');
+              if (parts.length === 2 && !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))) {
+                // Use separate seed for location
+                seededRandom = createSeededRandom(seedBase + 0);
+                obj[key] = `${randomLat()},${randomLng()}`;
+                continue;
+              }
+            } else if (key === 'coOrdinateModel' && typeof obj[key] === 'object') {
+              // Use separate seed for location
+              seededRandom = createSeededRandom(seedBase + 0);
+              if (obj[key].latitude) obj[key].latitude = parseFloat(randomLat());
+              if (obj[key].longitude) obj[key].longitude = parseFloat(randomLng());
+              continue;
+            }
+          }
+
+          // Category 2: DEVICE IDs ONLY (device, driver, car - NO sessions, NO tokens)
+          if (randomizeIds) {
+            if (lowerKey.includes('deviceid') || lowerKey === 'device-uid' || lowerKey === 'device' ||
+                lowerKey === 'gcmdeviceid' || lowerKey === 'pushydeviceid' || lowerKey === 'admadeviceid') {
+              if (typeof originalValue === 'string') {
+                // Use separate seed for device IDs
+                seededRandom = createSeededRandom(seedBase + 1);
+                obj[key] = randomDeviceId(originalValue.length);
+              }
+              continue;
+            } else if (lowerKey.includes('driverid') || lowerKey === 'cardriverid') {
+              if (typeof originalValue === 'number') {
+                // Use separate seed for device IDs
+                seededRandom = createSeededRandom(seedBase + 1);
+                const digits = originalValue.toString().length;
+                obj[key] = Math.floor(seededRandom() * Math.pow(10, digits));
+              }
+              continue;
+            } else if (lowerKey === 'carid') {
+              if (typeof originalValue === 'number') {
+                // Use separate seed for device IDs
+                seededRandom = createSeededRandom(seedBase + 1);
+                const digits = originalValue.toString().length;
+                obj[key] = Math.floor(seededRandom() * Math.pow(10, digits));
+              }
+              continue;
+            }
+          }
+
+          // Category 3: TOKENS & SESSIONS (access tokens, session IDs, authorization, access keys)
+          if (randomizeTokens) {
+            // Check for session IDs
+            if (lowerKey.includes('sessionid') || lowerKey.includes('session-id') || lowerKey === 'session') {
+              // Use separate seed for tokens
+              seededRandom = createSeededRandom(seedBase + 2);
+              if (typeof originalValue === 'string' && originalValue.includes('-')) {
+                obj[key] = randomUUID();
+              } else if (typeof originalValue === 'number') {
+                const digits = originalValue.toString().length;
+                obj[key] = Math.floor(seededRandom() * Math.pow(10, digits));
+              } else if (typeof originalValue === 'string') {
+                obj[key] = randomDeviceId(originalValue.length);
+              }
+              continue;
+            }
+            // Check for tokens and access-related fields
+            else if (lowerKey.includes('token') || lowerKey.includes('access') ||
+                     lowerKey === 'authorization' || lowerKey.includes('auth')) {
+              if (typeof originalValue === 'string' && originalValue.length > 20) {
+                // Use separate seed for tokens
+                seededRandom = createSeededRandom(seedBase + 2);
+                obj[key] = randomToken(originalValue);
+              }
+              continue;
+            }
+          }
+
+          // Recursively traverse nested objects
+          if (typeof obj[key] === 'object') {
+            traverse(obj[key]);
+          }
+        }
+      }
+
+      traverse(clone);
+      return clone;
+    }
+
+    function copyCurl() {
+      if (!selectedCall) return;
+
+      // Initialize seeded random based on request ID for consistent randomization
+      seededRandom = createSeededRandom(selectedCall.id);
+
+      const randomizeLocation = document.getElementById('randomizeLocation').checked;
+      const randomizeIds = document.getElementById('randomizeIds').checked;
+      const randomizeTokens = document.getElementById('randomizeTokens').checked;
+
+      let curl = `curl -X ${selectedCall.method} '${selectedCall.url}'`;
+
+      // Process headers
+      const headers = {...selectedCall.requestHeaders};
+
+      if (randomizeIds) {
+        // Randomize device IDs in headers
+        for (let key in headers) {
+          const lowerKey = key.toLowerCase();
+          const originalValue = headers[key];
+          if (lowerKey.includes('device') && lowerKey.includes('id')) {
+            headers[key] = randomDeviceId(originalValue ? originalValue.length : 16);
+          } else if (lowerKey.includes('session') && lowerKey.includes('id')) {
+            headers[key] = randomUUID();
+          }
+        }
+      }
+
+      if (randomizeTokens) {
+        // Randomize tokens in headers
+        for (let key in headers) {
+          const lowerKey = key.toLowerCase();
+          const originalValue = headers[key];
+          if (lowerKey.includes('token') || lowerKey === 'authorization' || lowerKey === 'accesstoken') {
+            if (originalValue && originalValue.length > 20) {
+              headers[key] = randomToken(originalValue);
+            }
+          }
+        }
+      }
+
+      // Add headers to curl
+      for (let [key, value] of Object.entries(headers)) {
+        curl += ` \\\n  -H '${key}: ${value}'`;
+      }
+
+      // Process body
+      if (selectedCall.requestBody || selectedCall.requestBodyJson) {
+        let body = selectedCall.requestBodyJson || selectedCall.requestBody;
+
+        // Apply randomizations
+        if (randomizeLocation || randomizeIds || randomizeTokens) {
+          body = randomizeData(body, randomizeLocation, randomizeIds, randomizeTokens, selectedCall.id);
+        }
+
+        const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+        curl += ` \\\n  -d '${bodyStr}'`;
+      }
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(curl).then(() => {
+        const btn = document.querySelector('.copy-curl-btn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '✓ Copied!';
+        btn.classList.add('copied');
+
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(err => {
+        alert('Failed to copy to clipboard: ' + err);
+      });
+    }
+
+    function renderJson(obj) {
+      if (typeof obj === 'string') {
+        return escapeHtml(obj);
+      }
+      return syntaxHighlight(JSON.stringify(obj, null, 2));
+    }
+
+    function syntaxHighlight(json) {
+      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+      // Theme-aware colors
+      const colors = isDark ? {
+        key: '#e06c75',
+        string: '#98c379',
+        number: '#d19a66',
+        boolean: '#d19a66',
+        null: '#c678dd'
+      } : {
+        key: '#d73a49',
+        string: '#22863a',
+        number: '#005cc5',
+        boolean: '#005cc5',
+        null: '#6f42c1'
+      };
+
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            return '<span style="color: ' + colors.key + ';">' + match + '</span>';
+          } else {
+            return '<span style="color: ' + colors.string + ';">' + match + '</span>';
+          }
+        } else if (/true|false/.test(match)) {
+          return '<span style="color: ' + colors.boolean + ';">' + match + '</span>';
+        } else if (/null/.test(match)) {
+          return '<span style="color: ' + colors.null + ';">' + match + '</span>';
+        }
+        return '<span style="color: ' + colors.number + ';">' + match + '</span>';
+      });
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function escapeRegex(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const panel = document.getElementById('detailPanel');
+      if (panel) {
+        panel.innerHTML = renderLogcatPanel();
+        logcatPanelMounted = true;
+      }
+      refreshPidList();
+      requestAnimationFrame(() => {
+        const el = document.getElementById('logcatContent');
+        if (el && logcatAutoscroll) el.scrollTop = 0;
+      });
+    });
+  </script>
+</body>
+</html>

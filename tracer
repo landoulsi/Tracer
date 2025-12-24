@@ -1,0 +1,197 @@
+#!/bin/bash
+# Tracer - A real-time network inspector for Android using mitmproxy
+
+show_help() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Tracer captures and displays Android network traffic in a beautiful web UI.
+
+Options:
+  -e, --exclude <pattern>   Exclude API calls whose URL contains the pattern.
+                            Repeat the flag to exclude multiple patterns.
+  -h, --help                Show this help message.
+
+Example:
+  $(basename "$0")                                  # Start with default settings
+  $(basename "$0") --exclude /ping --exclude /health  # Exclude endpoints
+
+Environment:
+  - Automatically sets up mitmproxy with your Android device
+  - Opens web UI at http://localhost:3000
+  - Press Ctrl+C to stop
+
+Troubleshooting:
+  If network issues occur, run: ./bin/fix_device_network.sh
+EOF
+}
+
+EXCLUDE_PATTERNS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -e|--exclude)
+      shift
+      if [[ -z "${1:-}" ]]; then
+        echo "Error: --exclude requires a value" >&2
+        exit 1
+      fi
+      EXCLUDE_PATTERNS+=("$1")
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Use --help to see available options." >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+# Show proxy warning
+cat <<'EOF'
+⚠️  WARNING: Network Proxy Alert
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This tool sets up a network proxy to capture API calls.
+In some cases, this may temporarily interrupt network connectivity.
+
+🔧 If you experience connection issues:
+   Run: ./bin/fix_device_network.sh
+
+This will restore your device's network settings.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EOF
+
+if [[ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]]; then
+  TRACER_EXCLUDES=$(IFS=','; echo "${EXCLUDE_PATTERNS[*]}")
+  export TRACER_EXCLUDES
+  echo "🚫 Excluding API patterns: $TRACER_EXCLUDES"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WEB_DIR="$SCRIPT_DIR/web"
+
+# MITM sniffer helpers
+MITM_LOG=""
+MITM_PID=""
+MITM_SNIFFER="$SCRIPT_DIR/bin/mitm_sniffer.sh"
+
+cleanup_sniffer() {
+  if [[ -n "$MITM_PID" ]]; then
+    echo "🧹 Stopping MITM sniffer..."
+    kill "$MITM_PID" >/dev/null 2>&1 || true
+    wait "$MITM_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$MITM_LOG" && -f "$MITM_LOG" ]]; then
+    rm -f "$MITM_LOG"
+  fi
+}
+
+trap cleanup_sniffer EXIT INT TERM
+
+start_sniffer() {
+  echo "🔀 Starting mitmproxy sniffer..."
+  if [[ ! -x "$MITM_SNIFFER" ]]; then
+    echo "❌ $MITM_SNIFFER is not executable. Please check the file permissions."
+    exit 1
+  fi
+
+  MITM_LOG="$(mktemp /tmp/mitm_log.XXXXXX)"
+  if [[ -z "$MITM_LOG" ]]; then
+    echo "❌ Unable to create temporary log file for the sniffer."
+    exit 1
+  fi
+  echo "🛡️ Capturing MITM output at $MITM_LOG"
+
+  # Run the sniffer in background and record its PID for cleanup
+  "$MITM_SNIFFER" > "$MITM_LOG" 2>&1 &
+  MITM_PID=$!
+
+  # Give the sniffer a moment to start so the log file exists before the UI tails it
+  sleep 2
+}
+
+# Check device BEFORE starting background processes
+DEV=$(adb devices | awk 'NR>1 && $2=="device" {print $1}')
+if [ -z "$DEV" ]; then
+  echo "❌ No device connected."
+  exit 1
+fi
+
+# Certificate setup
+MITM_CERT="$HOME/.mitmproxy/mitmproxy-ca-cert.cer"
+CERT_INSTALLED_MARKER="$HOME/.mitmproxy/.cert_installed_$DEV"
+
+# Generate cert if needed
+if [ ! -f "$MITM_CERT" ]; then
+  echo "🔧 Generating mitmproxy certificate..."
+  timeout 2 mitmdump >/dev/null 2>&1 || true
+fi
+
+# Check if mitmproxy certificate file exists on device
+CERT_ON_DEVICE=$(adb shell "test -f /sdcard/Download/mitmproxy-ca-cert.cer && echo 'exists' || echo 'missing'" | tr -d '\r')
+
+# Only push mitmproxy certificate if it doesn't exist on device
+if [ "$CERT_ON_DEVICE" = "missing" ]; then
+  echo "📄 Pushing mitmproxy certificate to device..."
+  adb push "$MITM_CERT" /sdcard/Download/mitmproxy-ca-cert.cer >/dev/null 2>&1
+  echo "✓ Mitmproxy certificate pushed to /sdcard/Download/mitmproxy-ca-cert.cer"
+else
+  echo "✓ Mitmproxy certificate already on device"
+fi
+
+# Show setup instructions if first time for this device
+if [ ! -f "$CERT_INSTALLED_MARKER" ]; then
+  echo ""
+  echo "╔════════════════════════════════════════════════════════════════╗"
+  echo "║          SETUP REQUIRED: Install Certificate                   ║"
+  echo "╚════════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "⚠️  First time setup for this device"
+  echo ""
+  echo "📋 Manual step (takes 1 minute):"
+  echo ""
+  echo "1. Open Settings > Security > Install from SD card (or 'Encryption & credentials')"
+  echo "2. Tap 'Install a certificate' > 'CA certificate'"
+  echo "3. Accept the warning"
+  echo "4. Select 'mitmproxy-ca-cert.cer' from Downloads"
+  echo "5. Name it 'mitmproxy' and tap 'OK'"
+  echo ""
+  read -p "Press ENTER after you've installed the certificate..."
+
+  # Mark as installed for this device
+  mkdir -p "$HOME/.mitmproxy"
+  touch "$CERT_INSTALLED_MARKER"
+
+  echo ""
+  echo "✓ Setup complete!"
+  echo ""
+fi
+
+# Kill any existing Tracer processes
+echo "🔍 Checking for existing Tracer processes..."
+pkill -f "node.*web/index.js" 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "✓ Stopped existing Tracer server"
+    sleep 1
+else
+    echo "✓ No existing server found"
+fi
+
+cd "$WEB_DIR"
+
+# Start MITM sniffer before launching the web UI
+start_sniffer
+
+# Ensure the web UI knows where to read MITM data
+export TRACER_SOURCE="mitm"
+export TRACER_LOG="$MITM_LOG"
+
+# Start the server
+echo "🚀 Starting Tracer Web Viewer..."
+echo "Press Ctrl+C to stop both the UI and the sniffer."
+npm start

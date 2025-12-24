@@ -1,0 +1,9 @@
+{
+  "name": "adb-api-logger-web",
+  "version": "1.0.0",
+  "description": "Web UI for viewing adb ApiLogger logs in real time",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
