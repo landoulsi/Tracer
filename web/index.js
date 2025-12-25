@@ -1,17 +1,10 @@
-// Entry point for adb logcat web viewer
+// Entry point for Tracer web viewer
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { URL } = require('url');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
-
-const safeLogFile = process.env.TRACER_LOG;
-const sourcePreference = (process.env.TRACER_SOURCE || '').toLowerCase();
-// useMitmSource is true when using mitmproxy log file
-const useMitmSource = sourcePreference === 'mitm' &&
-  typeof safeLogFile === 'string' &&
-  safeLogFile.length > 0;
 
 // Load config from shared config.json
 const config = require('./config.json');
@@ -48,7 +41,6 @@ const LOGCAT_MAX_LINES = config.LOGCAT_MAX_LINES;
  * @property {*} [responseBodyJson]
  */
 
-const { createMitmParser } = require('./parsers/mitm_parser');
 
 let logcatLines = [];
 let logcatProcess = null;
@@ -139,7 +131,7 @@ function resolveAdbPath() {
   for (const c of candidates) {
     try {
       if (c && fs.existsSync(c)) return c;
-    } catch (_) {}
+    } catch (_) { }
   }
   return null;
 }
@@ -371,6 +363,17 @@ async function handleRequest(req, res) {
     return handleClearLogs(res);
   }
 
+  if (req.method === 'POST' && pathname === '/api/report') {
+    try {
+      const body = await readJsonBody(req);
+      enqueueCall(body);
+      return sendJson(res, 200, { ok: true });
+    } catch (err) {
+      console.error('Report error:', err);
+      return sendJson(res, 400, { error: 'Invalid payload' });
+    }
+  }
+
   if (req.method === 'POST' && pathname === '/exclude') {
     return handlePatternCommand(req, res, 'exclude');
   }
@@ -421,7 +424,7 @@ function handleSseConnection(req, res) {
     sseClients.delete(client);
   });
 
-//  console.log('Client connected via SSE');
+  //  console.log('Client connected via SSE');
   writeEvent(res, 'init', {
     apiCalls,
     excludedPatterns: getExcludedPatterns(),
