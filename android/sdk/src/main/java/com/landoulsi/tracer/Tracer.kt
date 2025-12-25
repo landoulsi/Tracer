@@ -13,7 +13,7 @@ import android.util.Log
 
 object Tracer {
     private const val TAG = "Tracer"
-    private var serverUrl: String = "http://10.0.2.2:3000" // Default to emulator localhost
+    private var serverUrl: String = "http://localhost:3000"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val client = OkHttpClient()
     private val gson = Gson()

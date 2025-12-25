@@ -311,7 +311,7 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && pathname === '/config') {
     return sendJson(res, 200, {
       LOGCAT_MAX_LINES,
-      source: sourcePreference || 'api'
+      source: 'api'
     });
   }
 
@@ -386,15 +386,7 @@ async function handleRequest(req, res) {
     return sendJson(res, 200, getConnectedDeviceInfo());
   }
 
-  if (req.method === 'POST' && pathname === '/cert/push') {
-    try {
-      const result = pushCertToDevice();
-      return sendJson(res, 200, { ok: true, ...result });
-    } catch (err) {
-      console.error('Certificate push failed:', err);
-      return sendJson(res, 400, { ok: false, error: err.message || 'Failed to push certificate' });
-    }
-  }
+
 
   if (req.method === 'GET') {
     return serveStaticFile(pathname, res);
@@ -435,18 +427,6 @@ function handleSseConnection(req, res) {
 function handleClearLogs(res) {
   const beforeCount = apiCalls.length;
   apiCalls = [];
-
-  // If using safe log file, clear it too
-  if (useMitmSource && safeLogFile) {
-    try {
-      fs.writeFileSync(safeLogFile, '');
-      console.log(`✓ Cleared safe log file: ${safeLogFile}`);
-    } catch (err) {
-      console.error('Failed to clear safe log file:', err);
-      sendJson(res, 500, { error: 'Failed to clear log file' });
-      return;
-    }
-  }
 
   broadcast('logsCleared', null);
   console.log(`✓ API logs cleared by client (removed ${beforeCount} logs)`);
@@ -566,76 +546,7 @@ function getThirdPartyPackages() {
   }
 }
 
-function findCertPath() {
-  const candidates = [];
 
-  if (process.env.TRACER_CERT_PATH) {
-    candidates.push(process.env.TRACER_CERT_PATH);
-  }
-
-  if (typeof process.resourcesPath === 'string') {
-    candidates.push(path.join(process.resourcesPath, 'mitmproxy-ca-cert.cer'));
-  }
-
-  candidates.push(path.join(__dirname, '..', '..', '..', 'build', 'mitmproxy-ca-cert.cer'));
-  candidates.push(path.join(os.homedir(), '.mitmproxy', 'mitmproxy-ca-cert.cer'));
-
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-
-function ensureCertOnDevice(deviceId, certPath, remoteName) {
-  const remotePath = `/sdcard/Download/${remoteName}`;
-
-  const existsCheck = spawnSync(ADB_BIN, ['-s', deviceId, 'shell', 'test', '-f', remotePath]);
-  if (!existsCheck.error && existsCheck.status === 0) {
-    return { alreadyPresent: true, pushed: false, remotePath, certPath };
-  }
-
-  const pushResult = spawnSync(ADB_BIN, ['-s', deviceId, 'push', certPath, remotePath], { encoding: 'utf-8' });
-  if (pushResult.error) {
-    throw new Error(`adb push failed for ${remoteName}: ${pushResult.error.message}`);
-  }
-  if (pushResult.status !== 0) {
-    const stderr = (pushResult.stderr || '').trim();
-    const stdout = (pushResult.stdout || '').trim();
-    throw new Error(stderr || stdout || `adb push failed for ${remoteName}`);
-  }
-
-  return { alreadyPresent: false, pushed: true, remotePath, certPath };
-}
-
-function pushCertToDevice() {
-  const certPath = findCertPath();
-  if (!certPath) {
-    throw new Error('Certificate file not found. Build should bundle mitmproxy-ca-cert.cer.');
-  }
-
-  if (!ADB_BIN) {
-    throw new Error('adb not found on PATH. Install platform-tools or add adb to PATH.');
-  }
-
-  const { deviceId } = getConnectedDeviceInfo(true);
-
-  if (!deviceId) {
-    throw new Error('No connected device detected. Plug in a device and enable USB debugging.');
-  }
-
-  const mitmResult = ensureCertOnDevice(deviceId, certPath, 'mitmproxy-ca-cert.cer');
-
-  return {
-    certPath,
-    deviceId,
-    deviceName,
-    result: mitmResult
-  };
-}
 
 function getConnectedDeviceInfo(throwOnError = false) {
   try {
@@ -823,18 +734,8 @@ function restartAdb(pid = null, level = 'all') {
   });
 }
 
-// Use mitmproxy parser
-const networkParser = createMitmParser({ safeLogFile, shouldExclude, enqueueCall, formatTimestamp });
-
 if (!process.env.TRACER_TEST) {
-  networkParser.start();
-  process.once('exit', () => networkParser.stop());
-  process.once('SIGINT', () => {
-    networkParser.stop();
-    process.exit(0);
-  });
-
-  // Start logcat stream for UI log view (works for both safe and adb modes)
+  // Start logcat stream for UI log view
   restartAdb(); // Start without PID filter initially
 }
 
@@ -851,8 +752,7 @@ function startServer(port, hostIndex = 0) {
   server.listen(port, host, () => {
     const serverUrl = `http://${displayHost}:${port}`;
     console.log(`✓ Server running at ${serverUrl}`);
-    const sourceLabel = useMitmSource ? 'mitmproxy log' : 'adb logcat';
-    console.log(`✓ Listening to ${sourceLabel}...`);
+    console.log(`✓ Listening to adb logcat...`);
     console.log(`\n📱 Open your browser and navigate to: ${serverUrl}\n`);
   });
 
@@ -901,10 +801,8 @@ if (!process.env.TRACER_TEST) {
   startServer(PORT);
 } else {
   module.exports = {
-    parseLineForTest: apiLogParser.parseLine,
     resetParserState: () => {
       apiCalls = [];
-      apiLogParser.resetState();
     },
     getApiCalls: () => apiCalls
   };
