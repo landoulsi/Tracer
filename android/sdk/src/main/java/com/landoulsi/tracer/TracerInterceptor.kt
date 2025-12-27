@@ -52,24 +52,17 @@ class TracerInterceptor : Interceptor {
         val tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
 
         val responseBodyString = try {
-            val source = response.body?.source()
-            // 2. Guard: Prevent OOM but allow larger responses (Limit: 2MB)
-            // If the response is larger than 2MB, we only read the first 2MB.
-            source?.request(2097152) 
-            val buffer = source?.buffer?.clone()
+            // Use peekBody to safely buffer up to 2MB without consuming the response
+            val peekingBody = response.peekBody(2097152)
 
-            if (buffer != null) {
-                if ("gzip".equals(response.header("Content-Encoding"), ignoreCase = true)) {
-                    val gzipSource = GzipSource(buffer)
-                    val decompressed = Buffer()
-                    gzipSource.read(decompressed, Long.MAX_VALUE)
-                    gzipSource.close()
-                    decompressed.readString(Charset.forName("UTF-8"))
-                } else {
-                    buffer.readString(Charset.forName("UTF-8"))
-                }
+            if ("gzip".equals(response.header("Content-Encoding"), ignoreCase = true)) {
+                val gzipSource = GzipSource(peekingBody.source())
+                val decompressed = Buffer()
+                decompressed.writeAll(gzipSource)
+                gzipSource.close()
+                decompressed.readString(Charset.forName("UTF-8"))
             } else {
-                ""
+                peekingBody.string()
             }
         } catch (e: OutOfMemoryError) {
             "(Response too large to display - OOM avoided)"

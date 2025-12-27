@@ -499,7 +499,7 @@ function readJsonBody(req) {
     req.setEncoding('utf8');
     req.on('data', (chunk) => {
       data += chunk;
-      if (data.length > 1e6) {
+      if (data.length > 50e6) {
         req.destroy();
         reject(new Error('Payload too large'));
       }
