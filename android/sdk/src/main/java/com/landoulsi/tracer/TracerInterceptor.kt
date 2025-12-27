@@ -3,6 +3,7 @@ package com.landoulsi.tracer
 import okhttp3.Interceptor
 import okhttp3.Response
 import okio.Buffer
+import okio.GzipSource
 import java.nio.charset.Charset
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -15,13 +16,22 @@ class TracerInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+
+        // 1. Guard: Prevent infinite loops by ignoring our own reporting traffic
+        if (request.header("X-Tracer-Internal") != null) {
+            return chain.proceed(request)
+        }
+
+        android.util.Log.d("Tracer", "Intercepting request: ${request.url}")
         val startNs = System.nanoTime()
 
         val requestBodyString = try {
             val copy = request.newBuilder().build()
             val buffer = Buffer()
             copy.body?.writeTo(buffer)
-            buffer.readString(Charset.forName("UTF-8"))
+            // Limit request logging too (optional but good practice)
+            val byteCount = buffer.size.coerceAtMost(65536)
+            buffer.readString(byteCount, Charset.forName("UTF-8"))
         } catch (e: Exception) {
             ""
         }
@@ -30,9 +40,12 @@ class TracerInterceptor : Interceptor {
 
         val response: Response
         try {
-            response = chain.proceed(request)
+            // Force Gzip to ensure we can decode the response (we don't support Brotli yet)
+            val newRequest = request.newBuilder()
+                .header("Accept-Encoding", "gzip")
+                .build()
+            response = chain.proceed(newRequest)
         } catch (e: Exception) {
-            // Report failed request? For now just rethrow
             throw e
         }
 
@@ -40,11 +53,28 @@ class TracerInterceptor : Interceptor {
 
         val responseBodyString = try {
             val source = response.body?.source()
-            source?.request(Long.MAX_VALUE) // Buffer the entire body.
-            val buffer = source?.buffer
-            buffer?.clone()?.readString(Charset.forName("UTF-8")) ?: ""
+            // 2. Guard: Prevent OOM but allow larger responses (Limit: 2MB)
+            // If the response is larger than 2MB, we only read the first 2MB.
+            source?.request(2097152) 
+            val buffer = source?.buffer?.clone()
+
+            if (buffer != null) {
+                if ("gzip".equals(response.header("Content-Encoding"), ignoreCase = true)) {
+                    val gzipSource = GzipSource(buffer)
+                    val decompressed = Buffer()
+                    gzipSource.read(decompressed, Long.MAX_VALUE)
+                    gzipSource.close()
+                    decompressed.readString(Charset.forName("UTF-8"))
+                } else {
+                    buffer.readString(Charset.forName("UTF-8"))
+                }
+            } else {
+                ""
+            }
+        } catch (e: OutOfMemoryError) {
+            "(Response too large to display - OOM avoided)"
         } catch (e: Exception) {
-            ""
+            "(Body omitted: ${e.message})"
         }
 
         val responseHeaders = response.headers.toMap()

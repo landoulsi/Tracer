@@ -19,20 +19,25 @@ object Tracer {
     private val gson = Gson()
 
     fun init(url: String = "http://localhost:3000") {
+        Log.d(TAG, "Initialized with url: $url")
         serverUrl = url.trim().removeSuffix("/")
     }
 
     fun report(payload: ApiTransaction) {
+        Log.d(TAG, "Reporting transaction: ${payload.method} ${payload.url}")
         scope.launch {
             try {
                 val json = gson.toJson(payload)
                 val body = json.toRequestBody("application/json".toMediaTypeOrNull())
                 val request = Request.Builder()
                     .url("$serverUrl/api/report")
+                    .header("X-Tracer-Internal", "true")
                     .post(body)
                     .build()
 
+                Log.d(TAG, "Sending report to $serverUrl/api/report")
                 client.newCall(request).execute().close()
+                Log.d(TAG, "Report successful")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to report transaction", e)
             }

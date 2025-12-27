@@ -9,11 +9,15 @@ import org.gradle.api.Project
 
 class TracerPlugin : Plugin<Project> {
     override fun apply(project: Project) {
+        project.logger.lifecycle("TracerPlugin: Applied to project ${project.name}")
+        
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
         androidComponents.onVariants { variant ->
-            // Only instrument debug builds and only Application variants (to support Scope.ALL)
-            if (variant is ApplicationVariant && variant.buildType == "debug") {
+            project.logger.lifecycle("TracerPlugin: Saw variant '${variant.name}' of type ${variant::class.java.simpleName}")
+            // Only instrument Application variants
+            if (variant is ApplicationVariant) {
+                project.logger.lifecycle("TracerPlugin: Configuring ApplicationVariant ${variant.name}")
                 variant.instrumentation.transformClassesWith(
                     TracerClassVisitorFactory::class.java,
                     InstrumentationScope.ALL

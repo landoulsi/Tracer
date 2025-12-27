@@ -70,8 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupClient() {
         client = OkHttpClient.Builder()
-            .addInterceptor(TracerInterceptor())
-            // Add other interceptors if needed
+            // TracerInterceptor is injected automatically by the plugin!
             .build()
     }
 

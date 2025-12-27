@@ -18,7 +18,13 @@ abstract class TracerClassVisitorFactory : AsmClassVisitorFactory<TracerParams> 
     }
 
     override fun isInstrumentable(classData: ClassData): Boolean {
-        // We only care about OkHttpClient.Builder
-        return classData.className == "okhttp3.OkHttpClient\$Builder"
+        val name = classData.className
+        return !name.startsWith("android.") &&
+                !name.startsWith("androidx.") &&
+                !name.startsWith("kotlin.") &&
+                !name.startsWith("com.google.") &&
+                !name.contains(".R$") &&
+                !name.endsWith(".R") &&
+                name != "BuildConfig"
     }
 }
